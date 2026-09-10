@@ -2,6 +2,17 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Debug Interactive Echo Client",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/out/build/windows-x64/Debug/zpd-server-tests.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "preLaunchTask": "CMake: Build Debug"
+    },
+    {
       "name": "Debug zpd-server",
       "type": "cppvsdbg",
       "request": "launch",

@@ -2,6 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Server: Run",
+      "type": "process",
+      "command": "${workspaceFolder}/out/build/windows-x64/Debug/zpd-server.exe",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "CMake: Build Debug",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: Interactive Echo Client",
+      "type": "process",
+      "command": "${workspaceFolder}/out/build/windows-x64/Debug/zpd-server-tests.exe",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
       "label": "CMake: Configure",
       "type": "process",
       "command": "cmake",

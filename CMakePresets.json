@@ -18,5 +18,19 @@
   "buildPresets": [
     { "name": "debug", "configurePreset": "windows-x64", "configuration": "Debug" },
     { "name": "release", "configurePreset": "windows-x64", "configuration": "Release" }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "windows-x64",
+      "configuration": "Debug",
+      "output": { "verbosity": "verbose" }
+    },
+    {
+      "name": "release",
+      "configurePreset": "windows-x64",
+      "configuration": "Release",
+      "output": { "verbosity": "verbose" }
+    }
   ]
 }
