@@ -2,7 +2,6 @@
 #define ZPD_ZPDSERVER_HPP
 
 #include "IOCPServer.hpp"
-#include <syncstream>
 #include <string>
 
 class ZPDServer final : public IOCPServer
@@ -15,30 +14,28 @@ class ZPDServer final : public IOCPServer
 
     void OnConnected(std::uint32_t clientId) override
     {
-        std::osyncstream(std::cout) << "[connected] client=" << clientId << std::endl;
+        std::cout << "[connected] client=" << clientId << std::endl;
     }
 
     void OnReceived(std::uint32_t clientId, const char* data, DWORD size) override
     {
-        std::osyncstream(std::cout)
-            << "[received] client=" << clientId << " bytes=" << size
-            << " message=\"" << DisplayMessage(data, size) << '"' << std::endl;
+        std::cout << "[received] client=" << clientId << " bytes=" << size
+                  << " message=\"" << DisplayMessage(data, size) << '"' << std::endl;
         if (!Send(clientId, data, size)) {
-            std::osyncstream(std::cerr) << "[send failed] client=" << clientId << std::endl;
+            std::cerr << "[send failed] client=" << clientId << std::endl;
             Disconnect(clientId);
         }
     }
 
     void OnSendCompleted(std::uint32_t clientId, const char* data, DWORD size) override
     {
-        std::osyncstream(std::cout)
-            << "[sent] client=" << clientId << " bytes=" << size
-            << " message=\"" << DisplayMessage(data, size) << '"' << std::endl;
+        std::cout << "[sent] client=" << clientId << " bytes=" << size
+                  << " message=\"" << DisplayMessage(data, size) << '"' << std::endl;
     }
 
     void OnDisconnected(std::uint32_t clientId) override
     {
-        std::osyncstream(std::cout) << "[disconnected] client=" << clientId << std::endl;
+        std::cout << "[disconnected] client=" << clientId << std::endl;
     }
   private:
     static std::string DisplayMessage(const char* data, DWORD size)
