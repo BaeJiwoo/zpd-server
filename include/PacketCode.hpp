@@ -15,6 +15,7 @@ enum class ErrorCode : std::uint8_t
     UnknownRequest = 0x01,
     InvalidPayload = 0x02,
     InvalidRequestStatus = 0x03,
+    UnknownError = 0x10
 };
 
 #endif

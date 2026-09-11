@@ -1,4 +1,4 @@
-#include "zpd/ZPDServer.hpp"
+#include "ZPDServer.hpp"
 
 #include <charconv>
 #include <cstdlib>

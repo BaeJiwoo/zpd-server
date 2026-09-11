@@ -29,7 +29,6 @@ class ZPDServer final : public IOCPServer
             }
             std::cerr << "[packet or send failed] client=" << clientId << std::endl;
         } catch (...) {
-            // Exceptions must not escape an IOCP callback.
             std::cerr << "[packet handling failed] client=" << clientId << std::endl;
         }
         Disconnect(clientId);

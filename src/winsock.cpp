@@ -1,4 +1,4 @@
-#include "zpd/winsock.hpp"
+#include "winsock.hpp"
 
 #include <winsock2.h>
 

@@ -2,6 +2,7 @@
 #define ZPD_PACKETHANDLER_HPP
 
 #include "Packet.hpp"
+#include "proto/echo.pb.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -45,7 +46,7 @@ class PacketHandler
                 responses.push_back(Dispatch(header, payload));
                 consumed += header.size;
             }
-- 1.
+
             pending.erase(pending.begin(), pending.begin() +
                           static_cast<std::vector<char>::difference_type>(consumed));
             if (pending.empty())
@@ -72,18 +73,40 @@ class PacketHandler
 
         const std::size_t payloadSize = header.size - PacketHeader::Size;
         switch (header.request) {
-        case RequestCode::Echo:
-            response.payload.assign(payload, payload + payloadSize);
-            break;
+        case RequestCode::Echo: {
+            protocol::EchoRequest request;
 
-        case RequestCode::Ping:
+            if (!request.ParseFromArray(payload, static_cast<int>(payloadSize))) {
+                response.error = ErrorCode::InvalidPayload;
+                break;
+            }
+
+            protocol::EchoResponse reply;
+            reply.set_data(request.data());
+
+            if (reply.ByteSizeLong() > PacketHeader::MaxPayloadSize) {
+                response.error = ErrorCode::InvalidPayload;
+                break;
+            }
+
+            std::string encoded;
+            if (!reply.SerializeToString(&encoded)) {
+                response.error = ErrorCode::UnknownError;
+                break;
+            }
+
+            response.payload.assign(encoded.begin(), encoded.end());
+            break;
+        }
+        case RequestCode::Ping: {
             if (payloadSize != 0)
                 response.error = ErrorCode::InvalidPayload;
             break;
-            
-        default:
+        }
+        default: {
             response.error = ErrorCode::UnknownRequest;
             break;
+        }
         }
         return response;
     }

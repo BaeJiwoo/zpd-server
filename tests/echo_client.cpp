@@ -1,5 +1,5 @@
-#include "zpd/Define.hpp"
-#include "zpd/Packet.hpp"
+#include "Define.hpp"
+#include "Packet.hpp"
 
 #include <algorithm>
 #include <charconv>
