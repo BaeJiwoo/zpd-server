@@ -1,4 +1,5 @@
 #include "zpd/Define.hpp"
+#include "zpd/Packet.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -64,40 +65,75 @@ int RunEchoClient(int argc, char* argv[])
     }
 
     std::cout << "Connected to 127.0.0.1:" << port << '\n'
-              << "Type a message and press Enter. Type /quit to exit." << std::endl;
+              << "Type a message and press Enter. /ping sends Ping; /quit exits."
+              << std::endl;
     std::string line;
     while (std::cout << "> " << std::flush, std::getline(std::cin, line)) {
         if (line == "/quit")
             break;
-        line += '\n';
+        const bool ping = line == "/ping";
         std::string response;
-        for (std::size_t offset = 0; offset < line.size();) {
-            const auto length = (std::min)(line.size() - offset, std::size_t{MAX_BUFFER_SIZE});
+        std::size_t offset = 0;
+        do {
+            const auto length = ping ? std::size_t{0} :
+                (std::min)(line.size() - offset, PacketHeader::MaxPayloadSize);
+            Packet request;
+            request.request = ping ? RequestCode::Ping : RequestCode::Echo;
+            request.payload.assign(line.data() + offset, line.data() + offset + length);
+            const auto bytes = request.Serialize();
             std::size_t sent = 0;
-            while (sent < length) {
-                const int count = send(connection.peer, line.data() + offset + sent,
-                                       static_cast<int>(length - sent), 0);
+            while (sent < bytes.size()) {
+                const int count = send(connection.peer, bytes.data() + sent,
+                                       static_cast<int>(bytes.size() - sent), 0);
                 if (count <= 0) {
                     std::cerr << "Send failed or timed out.\n";
                     return 1;
                 }
                 sent += static_cast<std::size_t>(count);
             }
-            std::size_t received = 0;
-            while (received < length) {
-                char buffer[MAX_BUFFER_SIZE];
-                const int count = recv(connection.peer, buffer,
-                                       static_cast<int>(length - received), 0);
-                if (count <= 0) {
-                    std::cerr << "Server disconnected or receive timed out.\n";
-                    return 1;
+            const auto receiveExact = [&](char* destination, std::size_t count) {
+                std::size_t received = 0;
+                while (received < count) {
+                    const int chunk = recv(connection.peer, destination + received,
+                                           static_cast<int>(count - received), 0);
+                    if (chunk <= 0)
+                        return false;
+                    received += static_cast<std::size_t>(chunk);
                 }
-                response.append(buffer, static_cast<std::size_t>(count));
-                received += static_cast<std::size_t>(count);
+                return true;
+            };
+            char headerBytes[PacketHeader::Size];
+            if (!receiveExact(headerBytes, PacketHeader::Size)) {
+                std::cerr << "Server disconnected or receive timed out.\n";
+                return 1;
             }
+            const auto header = PacketHeader::Read(headerBytes);
+            if (header.size < PacketHeader::Size ||
+                header.size > PacketHeader::MaxPacketSize ||
+                header.request != request.request) {
+                std::cerr << "Invalid response header.\n";
+                return 1;
+            }
+            std::string payload(header.size - PacketHeader::Size, '\0');
+            if (!receiveExact(payload.data(), payload.size())) {
+                std::cerr << "Server disconnected or receive timed out.\n";
+                return 1;
+            }
+            if (header.error != ErrorCode::None) {
+                std::cerr << "Server returned error code "
+                          << static_cast<unsigned int>(header.error) << ".\n";
+                break;
+            }
+            if (payload.size() != request.payload.size() ||
+                !std::equal(payload.begin(), payload.end(), request.payload.begin())) {
+                std::cerr << "Response payload does not match the request.\n";
+                return 1;
+            }
+            response += payload;
             offset += length;
-        }
-        std::cout << "Echo: " << response << std::flush;
+            if (ping || offset == line.size())
+                std::cout << (ping ? "Pong" : "Echo: " + response) << std::endl;
+        } while (!ping && offset < line.size());
     }
     std::cout << "Disconnected.\n";
     return 0;

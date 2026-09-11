@@ -11,6 +11,7 @@ add_executable(zpd-server
     src/winsock.cpp
     include/zpd/winsock.hpp
     include/zpd/ZPDServer.hpp
+    include/zpd/Packet.hpp
 )
 target_include_directories(zpd-server PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(zpd-server PRIVATE cxx_std_20)
