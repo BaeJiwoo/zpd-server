@@ -1,11 +1,34 @@
 #include "Define.hpp"
 #include "Packet.hpp"
+#include "proto/echo.pb.h"
 
 #include <algorithm>
 #include <charconv>
 #include <iostream>
 #include <string>
 #include <string_view>
+
+bool BuildEchoRequest(std::string_view source, std::size_t offset,
+                      Packet& packet, std::size_t& dataSize)
+{
+    dataSize = (std::min)(source.size() - offset, PacketHeader::MaxPayloadSize);
+
+    protocol::EchoRequest message;
+    do {
+        message.set_data(source.data() + offset, dataSize);
+        if (message.ByteSizeLong() <= PacketHeader::MaxPayloadSize)
+            break;
+        --dataSize;
+    } while (dataSize != 0);
+
+    std::string encoded;
+    if (!message.SerializeToString(&encoded))
+        return false;
+
+    packet.request = RequestCode::Echo;
+    packet.payload.assign(encoded.begin(), encoded.end());
+    return true;
+}
 
 int RunEchoClient(int argc, char* argv[])
 {
@@ -75,11 +98,13 @@ int RunEchoClient(int argc, char* argv[])
         std::string response;
         std::size_t offset = 0;
         do {
-            const auto length = ping ? std::size_t{0} :
-                (std::min)(line.size() - offset, PacketHeader::MaxPayloadSize);
             Packet request;
             request.request = ping ? RequestCode::Ping : RequestCode::Echo;
-            request.payload.assign(line.data() + offset, line.data() + offset + length);
+            std::size_t length = 0;
+            if (!ping && !BuildEchoRequest(line, offset, request, length)) {
+                std::cerr << "Echo request serialization failed.\n";
+                return 1;
+            }
             const auto bytes = request.Serialize();
             std::size_t sent = 0;
             while (sent < bytes.size()) {
@@ -124,12 +149,26 @@ int RunEchoClient(int argc, char* argv[])
                           << static_cast<unsigned int>(header.error) << ".\n";
                 break;
             }
-            if (payload.size() != request.payload.size() ||
-                !std::equal(payload.begin(), payload.end(), request.payload.begin())) {
-                std::cerr << "Response payload does not match the request.\n";
-                return 1;
+            if (ping) {
+                if (!payload.empty()) {
+                    std::cerr << "Ping response contains an unexpected payload.\n";
+                    return 1;
+                }
+            } else {
+                protocol::EchoResponse echoResponse;
+                if (!echoResponse.ParseFromArray(payload.data(),
+                                                 static_cast<int>(payload.size()))) {
+                    std::cerr << "Echo response parsing failed.\n";
+                    return 1;
+                }
+                if (echoResponse.data().size() != length ||
+                    !std::equal(echoResponse.data().begin(), echoResponse.data().end(),
+                                line.data() + offset)) {
+                    std::cerr << "Response payload does not match the request.\n";
+                    return 1;
+                }
+                response += echoResponse.data();
             }
-            response += payload;
             offset += length;
             if (ping || offset == line.size())
                 std::cout << (ping ? "Pong" : "Echo: " + response) << std::endl;

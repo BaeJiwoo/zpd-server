@@ -1,4 +1,5 @@
 #include "ZPDServer.hpp"
+#include "proto/echo.pb.h"
 
 #include <algorithm>
 #include <chrono>
@@ -89,6 +90,40 @@ void CheckResponse(SOCKET peer, RequestCode request, ErrorCode error,
     Check(response.payload == payload, "response payload changed");
 }
 
+Packet BuildEchoRequest(const char* data, std::size_t available, std::size_t& dataSize)
+{
+    dataSize = (std::min)(available, PacketHeader::MaxPayloadSize);
+
+    protocol::EchoRequest message;
+    do {
+        message.set_data(data, dataSize);
+        if (message.ByteSizeLong() <= PacketHeader::MaxPayloadSize)
+            break;
+        --dataSize;
+    } while (dataSize != 0);
+
+    std::string encoded;
+    Check(message.SerializeToString(&encoded), "EchoRequest serialization failed");
+
+    Packet packet;
+    packet.request = RequestCode::Echo;
+    packet.payload.assign(encoded.begin(), encoded.end());
+    return packet;
+}
+
+std::string ReceiveEchoResponse(SOCKET peer)
+{
+    const auto packet = ReceivePacket(peer);
+    Check(packet.request == RequestCode::Echo, "expected Echo response");
+    Check(packet.error == ErrorCode::None, "Echo returned an error");
+
+    protocol::EchoResponse response;
+    Check(response.ParseFromArray(packet.payload.data(),
+                                  static_cast<int>(packet.payload.size())),
+          "EchoResponse parsing failed");
+    return response.data();
+}
+
 void Echo(std::uint16_t port, std::size_t size)
 {
     Socket peer;
@@ -99,16 +134,15 @@ void Echo(std::uint16_t port, std::size_t size)
     std::string response;
     std::size_t offset = 0;
     do {
-        const auto length = (std::min)(size - offset, PacketHeader::MaxPayloadSize);
-        Packet request;
-        request.payload.assign(payload.data() + offset, payload.data() + offset + length);
+        std::size_t length = 0;
+        const auto request = BuildEchoRequest(payload.data() + offset, size - offset, length);
         const auto bytes = request.Serialize();
         SendAll(peer.value, bytes.data(), bytes.size(), 997);
-        const auto reply = ReceivePacket(peer.value);
-        Check(reply.request == RequestCode::Echo, "expected Echo response");
-        Check(reply.error == ErrorCode::None, "Echo returned an error");
-        Check(reply.payload == request.payload, "Echo packet payload changed");
-        response.append(reply.payload.begin(), reply.payload.end());
+        const auto reply = ReceiveEchoResponse(peer.value);
+        Check(reply.size() == length &&
+              std::equal(reply.begin(), reply.end(), payload.data() + offset),
+              "Echo packet payload changed");
+        response += reply;
         offset += length;
     } while (offset < size);
     Check(response == payload, "echo bytes or order changed");
@@ -127,20 +161,22 @@ void PacketProtocol(std::uint16_t port)
     Check(std::equal(std::begin(ping), std::end(ping), std::begin(pong)),
           "Ping wire response changed");
 
-    Packet echo;
-    echo.payload = {'a', '\0', static_cast<char>(0xff), 'z'};
+    const std::string rawEcho{'a', '\0', static_cast<char>(0xff), 'z'};
+    std::size_t encodedDataSize = 0;
+    const Packet echo = BuildEchoRequest(rawEcho.data(), rawEcho.size(), encodedDataSize);
+    Check(encodedDataSize == rawEcho.size(), "raw Echo request was unexpectedly split");
     const auto echoBytes = echo.Serialize();
     SendAll(peer.value, echoBytes.data(), echoBytes.size(), 1);
-    CheckResponse(peer.value, RequestCode::Echo, ErrorCode::None, echo.payload);
+    Check(ReceiveEchoResponse(peer.value) == rawEcho, "raw Echo response changed");
 
     // Write several frames together; read each response by its header length.
     std::vector<char> combined(echoBytes);
     combined.insert(combined.end(), std::begin(ping), std::end(ping));
     combined.insert(combined.end(), echoBytes.begin(), echoBytes.end());
     SendAll(peer.value, combined.data(), combined.size());
-    CheckResponse(peer.value, RequestCode::Echo, ErrorCode::None, echo.payload);
+    Check(ReceiveEchoResponse(peer.value) == rawEcho, "combined Echo response changed");
     CheckResponse(peer.value, RequestCode::Ping, ErrorCode::None);
-    CheckResponse(peer.value, RequestCode::Echo, ErrorCode::None, echo.payload);
+    Check(ReceiveEchoResponse(peer.value) == rawEcho, "combined Echo response changed");
 
     const auto expectError = [&](const Packet& request, ErrorCode expected) {
         const auto bytes = request.Serialize();
@@ -238,8 +274,10 @@ int main(int argc, char* argv[])
 
         Socket active;
         active.Connect(server.Port());
-        Packet pending;
-        pending.payload.assign(PacketHeader::MaxPayloadSize, 'x');
+        const std::string pendingData(PacketHeader::MaxPayloadSize, 'x');
+        std::size_t pendingDataSize = 0;
+        const Packet pending = BuildEchoRequest(pendingData.data(), pendingData.size(),
+                                                pendingDataSize);
         const auto pendingBytes = pending.Serialize();
         SendAll(active.value, pendingBytes.data(), pendingBytes.size());
         server.Stop();
