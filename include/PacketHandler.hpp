@@ -2,22 +2,23 @@
 #define ZPD_PACKETHANDLER_HPP
 
 #include "Packet.hpp"
+#include "Define.hpp"
 #include "proto/echo.pb.h"
 
 #include <mutex>
-#include <unordered_map>
+#include <map>
 
 class PacketHandler
 {
   public:
-    void Reset(std::uint32_t clientId)
+    void Reset(ConnectionKey connection)
     {
         std::lock_guard lock(m_mutex);
-        m_pending.erase(clientId);
+        m_pending.erase(connection);
     }
 
     template <typename SendPacket>
-    bool Handle(std::uint32_t clientId, const char* data, std::size_t size,
+    bool Handle(ConnectionKey connection, const char* data, std::size_t size,
                 SendPacket&& sendPacket)
     {
         if (size == 0)
@@ -28,7 +29,7 @@ class PacketHandler
         std::vector<Packet> responses;
         {
             std::lock_guard lock(m_mutex);
-            auto& pending = m_pending[clientId];
+            auto& pending = m_pending[connection];
             pending.insert(pending.end(), data, data + size);
 
             std::size_t consumed = 0;
@@ -36,7 +37,7 @@ class PacketHandler
                 const auto header = PacketHeader::Read(pending.data() + consumed);
                 if (header.size < PacketHeader::Size ||
                     header.size > PacketHeader::MaxPacketSize) {
-                    m_pending.erase(clientId);
+                    m_pending.erase(connection);
                     return false;
                 }
                 if (pending.size() - consumed < header.size)
@@ -50,7 +51,7 @@ class PacketHandler
             pending.erase(pending.begin(), pending.begin() +
                           static_cast<std::vector<char>::difference_type>(consumed));
             if (pending.empty())
-                m_pending.erase(clientId);
+                m_pending.erase(connection);
         }
 
         for (const auto& response : responses) {
@@ -112,7 +113,7 @@ class PacketHandler
     }
 
     std::mutex m_mutex;
-    std::unordered_map<std::uint32_t, std::vector<char>> m_pending;
+    std::map<ConnectionKey, std::vector<char>> m_pending;
 };
 
 #endif

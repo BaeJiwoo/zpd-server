@@ -46,7 +46,10 @@ class ClientInfo
             return false;
         }
 
+        ++m_generation;
+
         m_connected.store(true);
+
         return true;
     }
 
@@ -77,7 +80,6 @@ class ClientInfo
             return false;
         }
 
-        
         if (m_sends.size() >= 256)
             return false;
         auto owned = std::make_unique<IOContext>();
@@ -123,6 +125,11 @@ class ClientInfo
         return true;
     }
 
+    ConnectionKey Key() const noexcept
+    {
+        return {m_index, m_generation};
+    }
+
   private:
     bool PostSend(IOContext* context)
     {
@@ -164,13 +171,22 @@ class ClientInfo
     }
 
     std::recursive_mutex m_mutex;
+
     std::condition_variable_any m_idle;
+
     std::size_t m_pending = 0;
+
     std::deque<std::unique_ptr<IOContext>> m_sends;
+
     std::uint32_t m_index;
+
     SOCKET m_socket = INVALID_SOCKET;
+
     std::atomic_bool m_connected = false;
+
     IOContext m_receive;
+
+    std::uint64_t m_generation = 0;
 };
 
 #endif

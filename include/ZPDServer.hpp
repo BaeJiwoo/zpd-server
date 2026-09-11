@@ -12,18 +12,20 @@ class ZPDServer final : public IOCPServer
         Stop();
     }
 
-    void OnConnected(std::uint32_t clientId) override
+    void OnConnected(ConnectionKey connection) override
     {
-        m_packetHandler.Reset(clientId);
-        std::cout << "[connected] client=" << clientId << std::endl;
+        m_packetHandler.Reset(connection);
+        std::cout << "[connected] client=" << connection.clientId << std::endl;
     }
 
-    void OnReceived(std::uint32_t clientId, const char* data, DWORD size) override
+    void OnReceived(ConnectionKey connection, const char* data, DWORD size) override
     {
+        
+        auto clientId = connection.clientId;
         try {
-            if (m_packetHandler.Handle(clientId, data, size,
-                    [this, clientId](const char* bytes, std::uint32_t length) {
-                        return Send(clientId, bytes, length);
+            if (m_packetHandler.Handle(connection, data, size,
+                    [&](const char* bytes, std::uint32_t length) {
+                        return Send(connection, bytes, length);
                     })) {
                 return;
             }
@@ -31,18 +33,18 @@ class ZPDServer final : public IOCPServer
         } catch (...) {
             std::cerr << "[packet handling failed] client=" << clientId << std::endl;
         }
-        Disconnect(clientId);
+        Disconnect(connection);
     }
 
-    void OnSendCompleted(std::uint32_t clientId, const char*, DWORD size) override
+    void OnSendCompleted(ConnectionKey connection, const char*, DWORD size) override
     {
-        std::cout << "[sent] client=" << clientId << " bytes=" << size << std::endl;
+        std::cout << "[sent] client=" << connection.clientId << " bytes=" << size << std::endl;
     }
 
-    void OnDisconnected(std::uint32_t clientId) override
+    void OnDisconnected(ConnectionKey connection) override
     {
-        m_packetHandler.Reset(clientId);
-        std::cout << "[disconnected] client=" << clientId << std::endl;
+        m_packetHandler.Reset(connection);
+        std::cout << "[disconnected] client=" << connection.clientId << std::endl;
     }
 
   private:

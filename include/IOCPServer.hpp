@@ -110,32 +110,45 @@ class IOCPServer
     }
 
   protected:
-    bool Send(std::uint32_t clientId, const char* data, std::uint32_t size)
+    bool Send(ConnectionKey connection, const char* data, std::uint32_t size)
     {
         if (data == nullptr || size == 0 || size > MAX_BUFFER_SIZE ||
-            clientId >= m_clients.size()) {
+            connection.clientId >= m_clients.size()) {
             return false;
         }
 
-        ClientInfo* client = m_clients[clientId].get();
-        if (!client->IsConnected()) {
+        ClientInfo* client = m_clients[connection.clientId].get();
+        std::lock_guard lock(client->m_mutex);
+        
+        if (!client->IsConnected() ||
+                client->m_generation != connection.generation) {
             return false;
         }
 
         return client->Send(data, size);
     }
 
-    void Disconnect(std::uint32_t clientId)
+    void Disconnect(ConnectionKey connection)
     {
-        if (clientId < m_clients.size()) {
-            DisconnectClient(m_clients[clientId].get());
+        if (connection.clientId >= m_clients.size()) {
+            return;
         }
+
+        ClientInfo* client = m_clients[connection.clientId].get();
+        std::lock_guard lock(client->m_mutex);
+
+        if (!client->IsConnected() ||
+            client->m_generation != connection.generation) {
+            return;
+        }
+
+        DisconnectClient(client);
     }
 
-    virtual void OnConnected(std::uint32_t clientId) = 0;
-    virtual void OnReceived(std::uint32_t clientId, const char* data, DWORD size) = 0;
-    virtual void OnSendCompleted(std::uint32_t clientId, const char* data, DWORD size) = 0;
-    virtual void OnDisconnected(std::uint32_t clientId) = 0;
+    virtual void OnConnected(ConnectionKey connection) = 0;
+    virtual void OnReceived(ConnectionKey connection, const char* data, DWORD size) = 0;
+    virtual void OnSendCompleted(ConnectionKey connection, const char*, DWORD size) = 0;
+    virtual void OnDisconnected(ConnectionKey connection) = 0;
 
   private:
     bool FailStart()
@@ -166,7 +179,7 @@ class IOCPServer
     {
         std::lock_guard lock(client->m_mutex);
         if (client->Disconnect()) {
-            OnDisconnected(client->Index());
+            OnDisconnected(client->Key());
         }
     }
 
@@ -199,7 +212,7 @@ class IOCPServer
                 continue;
             }
 
-            OnConnected(client->Index());
+            OnConnected(client->Key());
             if (!client->Receive())
                 DisconnectClient(client);
         }
@@ -233,7 +246,7 @@ class IOCPServer
             }
 
             if (context->m_operation == IOOperation::Receive) {
-                OnReceived(client->Index(), context->m_storage, transferred);
+                OnReceived(client->Key(), context->m_storage, transferred);
                 if (client->IsConnected() && !client->Receive()) {
                     DisconnectClient(client);
                 }
@@ -248,7 +261,7 @@ class IOCPServer
                 continue;
             }
 
-            OnSendCompleted(client->Index(), context->m_storage, context->m_dataSize);
+            OnSendCompleted(client->Key(), context->m_storage, context->m_dataSize);
             if (!client->FinishSend())
                 DisconnectClient(client);
         }

@@ -8,6 +8,7 @@
 #include <WinSock2.h>
 #include <Windows.h>
 #include <cstdint>
+#include <compare>
 
 constexpr DWORD MAX_BUFFER_SIZE = 4096;
 
@@ -24,6 +25,15 @@ struct IOContext
     IOOperation m_operation = IOOperation::Receive;
     char m_storage[MAX_BUFFER_SIZE]{};
     DWORD m_dataSize = 0;
+};
+
+struct ConnectionKey
+{
+    std::uint32_t clientId;
+    std::uint64_t generation;
+
+    bool operator==(const ConnectionKey&) const = default;
+    auto operator<=>(const ConnectionKey&) const = default;
 };
 
 #endif
