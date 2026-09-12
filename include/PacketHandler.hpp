@@ -26,7 +26,7 @@ class PacketHandler
         if (data == nullptr || size > PacketHeader::MaxPacketSize)
             return false;
 
-        std::vector<Packet> responses;
+        std::vector<Packet> requests;
         {
             std::lock_guard lock(m_mutex);
             auto& pending = m_pending[connection];
@@ -44,7 +44,16 @@ class PacketHandler
                     break;
 
                 const char* payload = pending.data() + consumed + PacketHeader::Size;
-                responses.push_back(Dispatch(header, payload));
+                
+                //requests.push_back(Dispatch(header, payload));
+                
+                Packet request;
+                request.request = header.request;
+                request.error = header.error;
+                request.payload.assign(payload, payload + (header.size - PacketHeader::Size));
+
+                requests.push_back(request);
+
                 consumed += header.size;
             }
 
@@ -54,8 +63,10 @@ class PacketHandler
                 m_pending.erase(connection);
         }
 
-        for (const auto& response : responses) {
+        for (const auto& request : requests) {
+            const Packet response = Dispatch(request);
             const auto bytes = response.Serialize();
+
             if (!sendPacket(bytes.data(), static_cast<std::uint32_t>(bytes.size())))
                 return false;
         }
@@ -63,21 +74,22 @@ class PacketHandler
     }
 
   private:
-    static Packet Dispatch(const PacketHeader& header, const char* payload)
+    static Packet Dispatch(const Packet& requestPacket)
     {
         Packet response;
-        response.request = header.request;
-        if (header.error != ErrorCode::None) {
+        response.request = requestPacket.request;
+
+        if (requestPacket.error != ErrorCode::None) {
             response.error = ErrorCode::InvalidRequestStatus;
             return response;
         }
 
-        const std::size_t payloadSize = header.size - PacketHeader::Size;
-        switch (header.request) {
+        const auto& payload = requestPacket.payload;
+        switch (requestPacket.request) {
         case RequestCode::Echo: {
             protocol::EchoRequest request;
 
-            if (!request.ParseFromArray(payload, static_cast<int>(payloadSize))) {
+            if (!request.ParseFromArray(payload.data(), static_cast<int>(payload.size()))) {
                 response.error = ErrorCode::InvalidPayload;
                 break;
             }
@@ -100,7 +112,7 @@ class PacketHandler
             break;
         }
         case RequestCode::Ping: {
-            if (payloadSize != 0)
+            if (!payload.empty())
                 response.error = ErrorCode::InvalidPayload;
             break;
         }
