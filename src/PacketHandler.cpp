@@ -57,7 +57,7 @@ void PacketHandler::Stop()
 void PacketHandler::LogicWorker()
 {
     while (true) {
-        PendingPacket request;
+        PacketHandlerEvent request;
 
         {
             std::unique_lock lock(m_mutex);

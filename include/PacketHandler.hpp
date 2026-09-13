@@ -4,6 +4,7 @@
 #include "Packet.hpp"
 #include "Define.hpp"
 #include "proto/echo.pb.h"
+#include "PacketHandlerEvent.hpp"
 
 #include <mutex>
 #include <map>
@@ -70,7 +71,12 @@ class PacketHandler
                     return false;
                 }
 
-                m_packetQueue.push({connection, std::move(request)});
+                m_packetQueue.push({
+                PacketHandlerEventType::PacketReceived,
+                connection,
+                std::move(request)
+                });
+
                 m_queueReady.notify_one();
 
                 consumed += header.size;
@@ -127,7 +133,8 @@ class PacketHandler
     std::mutex m_mutex;
     std::map<ConnectionKey, std::vector<char>> m_pending;
     bool m_logicRunning = false;
-    std::queue<PendingPacket> m_packetQueue;
+    //std::queue<PendingPacket> m_packetQueue;
+    std::queue<PacketHandlerEvent> m_packetQueue;
     std::thread m_logicThread;
     SendCallback m_sendPacket;
     std::condition_variable m_queueReady;
