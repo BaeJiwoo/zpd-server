@@ -39,7 +39,10 @@ class ZPDServer final : public IOCPServer
 
     void OnConnected(ConnectionKey connection) override
     {
-        m_packetHandler.Reset(connection);
+        if (!m_packetHandler.EnqueueConnected(connection)) {
+            Disconnect(connection);
+            return;
+        }
         std::cout << "[connected] client=" << connection.clientId << std::endl;
     }
 
@@ -65,7 +68,8 @@ class ZPDServer final : public IOCPServer
 
     void OnDisconnected(ConnectionKey connection) override
     {
-        m_packetHandler.Reset(connection);
+        //m_packetHandler.Reset(connection);
+        m_packetHandler.EnqueueDisconnected(connection);
         std::cout << "[disconnected] client=" << connection.clientId << std::endl;
     }
 

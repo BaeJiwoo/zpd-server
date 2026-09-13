@@ -3,6 +3,7 @@
 
 #include <exception>
 #include <iostream>
+#include <set>
 
 bool PacketHandler::Run(SendCallback sendPacket)
 {
@@ -48,6 +49,7 @@ void PacketHandler::Stop()
             }
 
             m_pending.clear();
+            m_liveConnections.clear();
             m_sendPacket = {};
         }
     }
@@ -56,8 +58,9 @@ void PacketHandler::Stop()
 
 void PacketHandler::LogicWorker()
 {
+    std::set<ConnectionKey> connections;
     while (true) {
-        PacketHandlerEvent request;
+        PacketHandlerEvent event;
 
         {
             std::unique_lock lock(m_mutex);
@@ -69,18 +72,42 @@ void PacketHandler::LogicWorker()
             if (!m_logicRunning)
                 return;
 
-            request = std::move(m_packetQueue.front());
+            event = std::move(m_packetQueue.front());
             m_packetQueue.pop();
         }
 
         try {
-            const Packet response = Dispatch(request.packet);
-            const auto bytes = response.Serialize();
+            switch(event.type)
+            {
+                case PacketHandlerEventType::Connected:
+                    connections.insert(event.connection);
+                    break;
 
-            m_sendPacket(
-                request.connection,
-                bytes.data(),
-                static_cast<std::uint32_t>(bytes.size()));
+                case PacketHandlerEventType::PacketReceived: {
+                    if (!connections.contains(event.connection))
+                        break;
+
+                    {
+                        std::lock_guard lock(m_mutex);
+                        if (!m_liveConnections.contains(event.connection)) {
+                            break;
+                        }
+                    }
+
+                    const Packet response = Dispatch(event.packet);
+                    const auto bytes = response.Serialize();
+
+                    m_sendPacket(
+                        event.connection,
+                        bytes.data(),
+                        static_cast<std::uint32_t>(bytes.size()));
+                    break;
+                }
+
+                case PacketHandlerEventType::Disconnected:
+                    connections.erase(event.connection);
+                    break;
+            }
 
         } catch (const std::exception& error) {
             std::cerr << "[packet processing failed] "
@@ -123,4 +150,69 @@ Packet PacketHandler::Echo(const Packet& requestPacket)
     response.payload.assign(encoded.begin(), encoded.end());
     std::cout << "[Echo response] " << reply.data() << '\n';
     return response;
+}
+
+bool PacketHandler::EnqueueConnected(ConnectionKey connection) {
+    {
+        std::lock_guard lock(m_mutex);
+            
+        if (!m_logicRunning) {
+            return false;
+        }
+
+        if (m_liveConnections.contains(connection)) {
+            return true;
+        }
+
+         const auto used = m_packetQueue.size() + m_liveConnections.size();
+
+        if (used + 2 > MaxEventQueueSize) {
+            return false;
+        }
+
+        m_liveConnections.insert(connection);
+
+        try {
+            m_packetQueue.push({
+                PacketHandlerEventType::Connected,
+                connection,
+                Packet{}
+            });
+        } catch (...) {
+            m_liveConnections.erase(connection);
+            throw;
+        }
+
+    m_queueReady.notify_one();
+    return true;
+    }
+}
+
+    
+void PacketHandler::EnqueueDisconnected(ConnectionKey connection) {
+    {
+        std::lock_guard lock(m_mutex);
+
+        m_pending.erase(connection);
+            
+        if (!m_liveConnections.contains(connection)) {
+            return;
+        }
+
+        if (!m_logicRunning) {
+            m_liveConnections.erase(connection);
+            return;
+        }
+
+        m_packetQueue.push({
+            PacketHandlerEventType::Disconnected,
+            connection,
+            Packet{}
+        });
+
+        m_liveConnections.erase(connection);
+    }
+
+    m_queueReady.notify_one();
+    return;
 }

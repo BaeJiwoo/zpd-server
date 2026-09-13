@@ -13,6 +13,7 @@
 #include <functional>
 #include <utility>
 #include <condition_variable>
+#include <set>
 
 class PacketHandler
 {
@@ -66,15 +67,15 @@ class PacketHandler
                 request.payload.assign(payload, payload + (header.size - PacketHeader::Size));
 
 
-                if (m_packetQueue.size() >= 1024) {
+                if (m_packetQueue.size() + m_liveConnections.size() >= MaxEventQueueSize) {
                     m_pending.erase(connection);
                     return false;
                 }
 
                 m_packetQueue.push({
-                PacketHandlerEventType::PacketReceived,
-                connection,
-                std::move(request)
+                    PacketHandlerEventType::PacketReceived,
+                    connection,
+                    std::move(request)
                 });
 
                 m_queueReady.notify_one();
@@ -90,6 +91,10 @@ class PacketHandler
 
         return true;
     }
+
+    bool EnqueueConnected(ConnectionKey connection);
+
+    void EnqueueDisconnected(ConnectionKey connection);
 
   private:
     struct PendingPacket
@@ -138,6 +143,8 @@ class PacketHandler
     std::thread m_logicThread;
     SendCallback m_sendPacket;
     std::condition_variable m_queueReady;
+    static constexpr std::size_t MaxEventQueueSize = 1024;
+    std::set<ConnectionKey> m_liveConnections;
 };
 
 #endif
