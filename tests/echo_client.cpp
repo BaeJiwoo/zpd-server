@@ -32,7 +32,7 @@ bool BuildEchoRequest(std::string_view source, std::size_t offset, Packet& packe
 
 int RunEchoClient(int argc, char* argv[])
 {
-    unsigned int port = 9000;
+    unsigned int port = 9100;
     if (argc > 2) {
         std::cerr << "Usage: zpd-server-tests [port: 1-65535]\n";
         return 1;
@@ -88,19 +88,32 @@ int RunEchoClient(int argc, char* argv[])
     }
 
     std::cout << "Connected to 127.0.0.1:" << port << '\n'
-              << "Type a message and press Enter. /ping sends Ping; /quit exits." << std::endl;
+              << "Type a message to send Echo. /enter joins the lobby with a temporary player ID; "
+                 "/ping sends Ping; /quit exits."
+              << std::endl;
     std::string line;
     while (std::cout << "> " << std::flush, std::getline(std::cin, line)) {
         if (line == "/quit")
             break;
         const bool ping = line == "/ping";
+        const bool enter = line == "/enter";
         std::string response;
         std::size_t offset = 0;
         do {
             Packet request;
             request.request = ping ? RequestCode::Ping : RequestCode::Echo;
             std::size_t length = 0;
-            if (!ping && !BuildEchoRequest(line, offset, request, length)) {
+            if (enter) {
+                protocol::EnterRequest enterRequest;
+                std::string encoded;
+                if (!enterRequest.SerializeToString(&encoded)) {
+                    std::cerr << "Enter request serialization failed.\n";
+                    return 1;
+                }
+
+                request.request = RequestCode::Enter;
+                request.payload.assign(encoded.begin(), encoded.end());
+            } else if (!ping && !BuildEchoRequest(line, offset, request, length)) {
                 std::cerr << "Echo request serialization failed.\n";
                 return 1;
             }
@@ -143,10 +156,32 @@ int RunEchoClient(int argc, char* argv[])
                 return 1;
             }
             if (header.error != ErrorCode::None) {
-                std::cerr << "Server returned error code "
-                          << static_cast<unsigned int>(header.error) << ".\n";
+                if (enter && header.error == ErrorCode::AlreadyEntered) {
+                    std::cerr << "Already entered. Your existing player ID is unchanged.\n";
+                } else {
+                    std::cerr << "Server returned error code "
+                              << static_cast<unsigned int>(header.error) << ".\n";
+                }
                 break;
             }
+
+            if (enter) {
+                protocol::EnterResponse enterResponse;
+                if (!enterResponse.ParseFromArray(payload.data(),
+                                                  static_cast<int>(payload.size()))) {
+                    std::cerr << "Enter response parsing failed.\n";
+                    return 1;
+                }
+                if (enterResponse.player_id() == 0) {
+                    std::cerr << "Enter response contains an invalid player ID.\n";
+                    return 1;
+                }
+
+                std::cout << "Entered lobby. Temporary player ID: " << enterResponse.player_id()
+                          << std::endl;
+                break;
+            }
+
             if (ping) {
                 if (!payload.empty()) {
                     std::cerr << "Ping response contains an unexpected payload.\n";

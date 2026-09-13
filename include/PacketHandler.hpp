@@ -4,6 +4,7 @@
 #include "Packet.hpp"
 #include "Define.hpp"
 #include "proto/echo.pb.h"
+#include "PlayerSession.hpp"
 #include "PacketHandlerEvent.hpp"
 
 #include <mutex>
@@ -93,7 +94,8 @@ class PacketHandler
   private:
     static constexpr std::size_t MaxEventQueueSize = 1024;
 
-    static Packet Dispatch(const Packet& requestPacket)
+    static Packet Dispatch(const Packet& requestPacket, PlayerSession& session,
+                           std::uint64_t& nextPlayerId, std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId)
     {
         Packet response;
         response.request = requestPacket.request;
@@ -113,6 +115,9 @@ class PacketHandler
                 response.error = ErrorCode::InvalidPayload;
             break;
         }
+        case RequestCode::Enter: {
+            return EnterSession(requestPacket, session, nextPlayerId, connectionsByPlayerId);
+        }
         default: {
             response.error = ErrorCode::UnknownRequest;
             break;
@@ -124,6 +129,9 @@ class PacketHandler
     void LogicWorker();
 
     static Packet Echo(const Packet& requestPacket);
+
+    static Packet EnterSession(const Packet& requestPacket, PlayerSession& session,
+                               std::uint64_t& nextPlayerId, std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId);
 
     std::mutex m_mutex;
     std::map<ConnectionKey, std::vector<char>> m_pendingBytesByConnection;

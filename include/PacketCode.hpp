@@ -7,6 +7,7 @@ enum class RequestCode : std::uint8_t
 {
     Echo = 0x01,
     Ping = 0x02,
+    Enter = 0x03,
 };
 
 enum class ErrorCode : std::uint8_t
@@ -15,7 +16,8 @@ enum class ErrorCode : std::uint8_t
     UnknownRequest = 0x01,
     InvalidPayload = 0x02,
     InvalidRequestStatus = 0x03,
-    UnknownError = 0x10
+    AlreadyEntered = 0x11,
+    UnknownError = 0x99
 };
 
 #endif // ZPD_PACKETCODE_HPP

@@ -8,7 +8,7 @@
 
 int main(int argc, char* argv[])
 {
-    unsigned int port = 9000;
+    unsigned int port = 9100;
     if (argc > 2) {
         std::cerr << "Usage: zpd-server [port: 1-65535]\n";
         return EXIT_FAILURE;
