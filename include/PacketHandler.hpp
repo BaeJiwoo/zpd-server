@@ -7,28 +7,42 @@
 
 #include <mutex>
 #include <map>
+#include <thread>
+#include <queue>
+#include <functional>
+#include <utility>
+#include <condition_variable>
 
 class PacketHandler
 {
   public:
+    using SendCallback =
+        std::function<bool(ConnectionKey, const char*, std::uint32_t)>;
+
+    // Call lifecycle functions from the server owner thread.
+    bool Run(SendCallback sendPacket);
+    void Stop();
+
     void Reset(ConnectionKey connection)
     {
         std::lock_guard lock(m_mutex);
         m_pending.erase(connection);
     }
 
-    template <typename SendPacket>
-    bool Handle(ConnectionKey connection, const char* data, std::size_t size,
-                SendPacket&& sendPacket)
+    bool Handle(ConnectionKey connection, const char* data, std::size_t size)
     {
         if (size == 0)
             return true;
         if (data == nullptr || size > PacketHeader::MaxPacketSize)
             return false;
 
-        std::vector<Packet> requests;
         {
             std::lock_guard lock(m_mutex);
+
+
+            if (!m_logicRunning)
+                return false;
+
             auto& pending = m_pending[connection];
             pending.insert(pending.end(), data, data + size);
 
@@ -45,14 +59,19 @@ class PacketHandler
 
                 const char* payload = pending.data() + consumed + PacketHeader::Size;
                 
-                //requests.push_back(Dispatch(header, payload));
-                
                 Packet request;
                 request.request = header.request;
                 request.error = header.error;
                 request.payload.assign(payload, payload + (header.size - PacketHeader::Size));
 
-                requests.push_back(request);
+
+                if (m_packetQueue.size() >= 1024) {
+                    m_pending.erase(connection);
+                    return false;
+                }
+
+                m_packetQueue.push({connection, std::move(request)});
+                m_queueReady.notify_one();
 
                 consumed += header.size;
             }
@@ -63,17 +82,16 @@ class PacketHandler
                 m_pending.erase(connection);
         }
 
-        for (const auto& request : requests) {
-            const Packet response = Dispatch(request);
-            const auto bytes = response.Serialize();
-
-            if (!sendPacket(bytes.data(), static_cast<std::uint32_t>(bytes.size())))
-                return false;
-        }
         return true;
     }
 
   private:
+    struct PendingPacket
+    {
+        ConnectionKey connection{};
+        Packet packet;
+    };
+
     static Packet Dispatch(const Packet& requestPacket)
     {
         Packet response;
@@ -87,29 +105,7 @@ class PacketHandler
         const auto& payload = requestPacket.payload;
         switch (requestPacket.request) {
         case RequestCode::Echo: {
-            protocol::EchoRequest request;
-
-            if (!request.ParseFromArray(payload.data(), static_cast<int>(payload.size()))) {
-                response.error = ErrorCode::InvalidPayload;
-                break;
-            }
-
-            protocol::EchoResponse reply;
-            reply.set_data(request.data());
-
-            if (reply.ByteSizeLong() > PacketHeader::MaxPayloadSize) {
-                response.error = ErrorCode::InvalidPayload;
-                break;
-            }
-
-            std::string encoded;
-            if (!reply.SerializeToString(&encoded)) {
-                response.error = ErrorCode::UnknownError;
-                break;
-            }
-
-            response.payload.assign(encoded.begin(), encoded.end());
-            break;
+            return Echo(requestPacket);
         }
         case RequestCode::Ping: {
             if (!payload.empty())
@@ -124,8 +120,17 @@ class PacketHandler
         return response;
     }
 
+    void LogicWorker();
+    
+    static Packet Echo(const Packet& requestPacket);
+
     std::mutex m_mutex;
     std::map<ConnectionKey, std::vector<char>> m_pending;
+    bool m_logicRunning = false;
+    std::queue<PendingPacket> m_packetQueue;
+    std::thread m_logicThread;
+    SendCallback m_sendPacket;
+    std::condition_variable m_queueReady;
 };
 
 #endif

@@ -7,6 +7,31 @@
 class ZPDServer final : public IOCPServer
 {
   public: 
+    bool Start(std::uint16_t port, std::uint32_t maxClients,
+               std::uint16_t workerCount = 0)
+    {
+        if (!m_packetHandler.Run(
+                [this](ConnectionKey connection, const char* bytes, std::uint32_t length) {
+                    if (Send(connection, bytes, length))
+                        return true;
+                    Disconnect(connection);
+                    return false;
+                }))
+            return false;
+
+        if (!IOCPServer::Start(port, maxClients, workerCount)) {
+            m_packetHandler.Stop();
+            return false;
+        }
+        return true;
+    }
+
+    void Stop()
+    {
+        m_packetHandler.Stop();
+        IOCPServer::Stop();
+    }
+
     ~ZPDServer() override
     {
         Stop();
@@ -23,10 +48,7 @@ class ZPDServer final : public IOCPServer
         
         auto clientId = connection.clientId;
         try {
-            if (m_packetHandler.Handle(connection, data, size,
-                    [&](const char* bytes, std::uint32_t length) {
-                        return Send(connection, bytes, length);
-                    })) {
+            if (m_packetHandler.Handle(connection, data, size)) {
                 return;
             }
             std::cerr << "[packet or send failed] client=" << clientId << std::endl;
@@ -52,4 +74,4 @@ class ZPDServer final : public IOCPServer
     PacketHandler m_packetHandler;
 };
 
-#endif
+#endif // ZPD_ZPDSERVER_HPP

@@ -27,6 +27,7 @@ protobuf_generate(
 add_executable(zpd-server
     src/main.cpp
     src/winsock.cpp
+    src/PacketHandler.cpp
     include/winsock.hpp
     include/ZPDServer.hpp
     include/Packet.hpp
@@ -47,7 +48,10 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(zpd-server-tests tests/server_tests.cpp tests/echo_client.cpp)
+    add_executable(zpd-server-tests 
+        tests/server_tests.cpp 
+        tests/echo_client.cpp
+        src/PacketHandler.cpp)
     target_include_directories(zpd-server-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(zpd-server-tests PRIVATE cxx_std_20)
     set_target_properties(zpd-server-tests PROPERTIES CXX_EXTENSIONS OFF)
