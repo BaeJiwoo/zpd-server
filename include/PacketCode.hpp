@@ -1,5 +1,5 @@
-#ifndef ZPD_PACKET_CODE_HPP
-#define ZPD_PACKET_CODE_HPP
+#ifndef ZPD_PACKETCODE_HPP
+#define ZPD_PACKETCODE_HPP
 
 #include <cstdint>
 
@@ -18,4 +18,4 @@ enum class ErrorCode : std::uint8_t
     UnknownError = 0x10
 };
 
-#endif
+#endif // ZPD_PACKETCODE_HPP

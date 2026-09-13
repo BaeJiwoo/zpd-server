@@ -12,7 +12,6 @@ bool PacketHandler::Run(SendCallback sendPacket)
 
     m_sendPacket = std::move(sendPacket);
 
-    // TODO: Create the event-processing thread here when the queue is added.
     m_logicRunning = true;
 
     try {
@@ -30,7 +29,6 @@ void PacketHandler::Stop()
     if (!m_logicRunning)
         return;
 
-    // TODO: Signal, wake and join the event-processing thread here.
     {
         {
             std::unique_lock lock(m_mutex);
@@ -38,22 +36,21 @@ void PacketHandler::Stop()
         }
         m_queueReady.notify_all();
 
-        if(m_logicThread.joinable()) {
+        if (m_logicThread.joinable()) {
             m_logicThread.join();
         }
-        
+
         {
             std::unique_lock lock(m_mutex);
-            while (!m_packetQueue.empty()) {
-                m_packetQueue.pop();
+            while (!m_eventQueue.empty()) {
+                m_eventQueue.pop();
             }
 
-            m_pending.clear();
+            m_pendingBytesByConnection.clear();
             m_liveConnections.clear();
             m_sendPacket = {};
         }
     }
-
 }
 
 void PacketHandler::LogicWorker()
@@ -65,53 +62,47 @@ void PacketHandler::LogicWorker()
         {
             std::unique_lock lock(m_mutex);
 
-            m_queueReady.wait(lock, [this] {
-                return !m_logicRunning || !m_packetQueue.empty();
-            });
+            m_queueReady.wait(lock, [this] { return !m_logicRunning || !m_eventQueue.empty(); });
 
             if (!m_logicRunning)
                 return;
 
-            event = std::move(m_packetQueue.front());
-            m_packetQueue.pop();
+            event = std::move(m_eventQueue.front());
+            m_eventQueue.pop();
         }
 
         try {
-            switch(event.type)
-            {
-                case PacketHandlerEventType::Connected:
-                    connections.insert(event.connection);
+            switch (event.type) {
+            case PacketHandlerEventType::Connected:
+                connections.insert(event.connection);
+                break;
+
+            case PacketHandlerEventType::PacketReceived: {
+                if (!connections.contains(event.connection))
                     break;
 
-                case PacketHandlerEventType::PacketReceived: {
-                    if (!connections.contains(event.connection))
+                {
+                    std::lock_guard lock(m_mutex);
+                    if (!m_liveConnections.contains(event.connection)) {
                         break;
-
-                    {
-                        std::lock_guard lock(m_mutex);
-                        if (!m_liveConnections.contains(event.connection)) {
-                            break;
-                        }
                     }
-
-                    const Packet response = Dispatch(event.packet);
-                    const auto bytes = response.Serialize();
-
-                    m_sendPacket(
-                        event.connection,
-                        bytes.data(),
-                        static_cast<std::uint32_t>(bytes.size()));
-                    break;
                 }
 
-                case PacketHandlerEventType::Disconnected:
-                    connections.erase(event.connection);
-                    break;
+                const Packet response = Dispatch(event.packet);
+                const auto bytes = response.Serialize();
+
+                m_sendPacket(event.connection, bytes.data(),
+                             static_cast<std::uint32_t>(bytes.size()));
+                break;
+            }
+
+            case PacketHandlerEventType::Disconnected:
+                connections.erase(event.connection);
+                break;
             }
 
         } catch (const std::exception& error) {
-            std::cerr << "[packet processing failed] "
-                      << error.what() << '\n';
+            std::cerr << "[packet processing failed] " << error.what() << '\n';
         } catch (...) {
             std::cerr << "[packet processing failed] unknown error\n";
         }
@@ -124,9 +115,8 @@ Packet PacketHandler::Echo(const Packet& requestPacket)
     response.request = RequestCode::Echo;
 
     protocol::EchoRequest request;
-    if(!request.ParseFromArray(
-            requestPacket.payload.data(),
-            static_cast<int>(requestPacket.payload.size()))) {
+    if (!request.ParseFromArray(requestPacket.payload.data(),
+                                static_cast<int>(requestPacket.payload.size()))) {
         response.error = ErrorCode::InvalidPayload;
         return response;
     }
@@ -135,14 +125,14 @@ Packet PacketHandler::Echo(const Packet& requestPacket)
 
     protocol::EchoResponse reply;
     reply.set_data(request.data());
-    
-    if(reply.ByteSizeLong() > PacketHeader::MaxPayloadSize) {
+
+    if (reply.ByteSizeLong() > PacketHeader::MaxPayloadSize) {
         response.error = ErrorCode::InvalidPayload;
         return response;
     }
 
     std::string encoded;
-    if(!reply.SerializeToString(&encoded)) {
+    if (!reply.SerializeToString(&encoded)) {
         response.error = ErrorCode::UnknownError;
         return response;
     }
@@ -152,10 +142,11 @@ Packet PacketHandler::Echo(const Packet& requestPacket)
     return response;
 }
 
-bool PacketHandler::EnqueueConnected(ConnectionKey connection) {
+bool PacketHandler::EnqueueConnected(ConnectionKey connection)
+{
     {
         std::lock_guard lock(m_mutex);
-            
+
         if (!m_logicRunning) {
             return false;
         }
@@ -164,7 +155,7 @@ bool PacketHandler::EnqueueConnected(ConnectionKey connection) {
             return true;
         }
 
-         const auto used = m_packetQueue.size() + m_liveConnections.size();
+        const auto used = m_eventQueue.size() + m_liveConnections.size();
 
         if (used + 2 > MaxEventQueueSize) {
             return false;
@@ -173,28 +164,24 @@ bool PacketHandler::EnqueueConnected(ConnectionKey connection) {
         m_liveConnections.insert(connection);
 
         try {
-            m_packetQueue.push({
-                PacketHandlerEventType::Connected,
-                connection,
-                Packet{}
-            });
+            m_eventQueue.push({PacketHandlerEventType::Connected, connection, Packet{}});
         } catch (...) {
             m_liveConnections.erase(connection);
             throw;
         }
 
-    m_queueReady.notify_one();
-    return true;
+        m_queueReady.notify_one();
+        return true;
     }
 }
 
-    
-void PacketHandler::EnqueueDisconnected(ConnectionKey connection) {
+void PacketHandler::EnqueueDisconnected(ConnectionKey connection)
+{
     {
         std::lock_guard lock(m_mutex);
 
-        m_pending.erase(connection);
-            
+        m_pendingBytesByConnection.erase(connection);
+
         if (!m_liveConnections.contains(connection)) {
             return;
         }
@@ -204,11 +191,7 @@ void PacketHandler::EnqueueDisconnected(ConnectionKey connection) {
             return;
         }
 
-        m_packetQueue.push({
-            PacketHandlerEventType::Disconnected,
-            connection,
-            Packet{}
-        });
+        m_eventQueue.push({PacketHandlerEventType::Disconnected, connection, Packet{}});
 
         m_liveConnections.erase(connection);
     }

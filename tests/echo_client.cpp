@@ -8,8 +8,8 @@
 #include <string>
 #include <string_view>
 
-bool BuildEchoRequest(std::string_view source, std::size_t offset,
-                      Packet& packet, std::size_t& dataSize)
+bool BuildEchoRequest(std::string_view source, std::size_t offset, Packet& packet,
+                      std::size_t& dataSize)
 {
     dataSize = (std::min)(source.size() - offset, PacketHeader::MaxPayloadSize);
 
@@ -39,10 +39,10 @@ int RunEchoClient(int argc, char* argv[])
     }
     if (argc == 2) {
         const std::string_view argument(argv[1]);
-        const auto [end, error] = std::from_chars(argument.data(),
-                                                 argument.data() + argument.size(), port);
-        if (error != std::errc{} || end != argument.data() + argument.size() ||
-            port == 0 || port > 65535) {
+        const auto [end, error] =
+            std::from_chars(argument.data(), argument.data() + argument.size(), port);
+        if (error != std::errc{} || end != argument.data() + argument.size() || port == 0 ||
+            port > 65535) {
             std::cerr << "Port must be an integer from 1 to 65535.\n";
             return 1;
         }
@@ -53,7 +53,8 @@ int RunEchoClient(int argc, char* argv[])
         std::cerr << "WinSock2 initialization failed.\n";
         return 1;
     }
-    struct Cleanup {
+    struct Cleanup
+    {
         SOCKET peer = INVALID_SOCKET;
         ~Cleanup()
         {
@@ -82,14 +83,12 @@ int RunEchoClient(int argc, char* argv[])
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     address.sin_port = htons(static_cast<std::uint16_t>(port));
     if (connect(connection.peer, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
-        std::cerr << "Cannot connect to 127.0.0.1:" << port
-                  << ". Start zpd-server first.\n";
+        std::cerr << "Cannot connect to 127.0.0.1:" << port << ". Start zpd-server first.\n";
         return 1;
     }
 
     std::cout << "Connected to 127.0.0.1:" << port << '\n'
-              << "Type a message and press Enter. /ping sends Ping; /quit exits."
-              << std::endl;
+              << "Type a message and press Enter. /ping sends Ping; /quit exits." << std::endl;
     std::string line;
     while (std::cout << "> " << std::flush, std::getline(std::cin, line)) {
         if (line == "/quit")
@@ -133,8 +132,7 @@ int RunEchoClient(int argc, char* argv[])
                 return 1;
             }
             const auto header = PacketHeader::Read(headerBytes);
-            if (header.size < PacketHeader::Size ||
-                header.size > PacketHeader::MaxPacketSize ||
+            if (header.size < PacketHeader::Size || header.size > PacketHeader::MaxPacketSize ||
                 header.request != request.request) {
                 std::cerr << "Invalid response header.\n";
                 return 1;

@@ -6,9 +6,8 @@
 
 class ZPDServer final : public IOCPServer
 {
-  public: 
-    bool Start(std::uint16_t port, std::uint32_t maxClients,
-               std::uint16_t workerCount = 0)
+  public:
+    bool Start(std::uint16_t port, std::uint32_t maxClients, std::uint16_t workerCount = 0)
     {
         if (!m_packetHandler.Run(
                 [this](ConnectionKey connection, const char* bytes, std::uint32_t length) {
@@ -48,7 +47,7 @@ class ZPDServer final : public IOCPServer
 
     void OnReceived(ConnectionKey connection, const char* data, DWORD size) override
     {
-        
+
         auto clientId = connection.clientId;
         try {
             if (m_packetHandler.Handle(connection, data, size)) {
@@ -68,13 +67,12 @@ class ZPDServer final : public IOCPServer
 
     void OnDisconnected(ConnectionKey connection) override
     {
-        //m_packetHandler.Reset(connection);
         m_packetHandler.EnqueueDisconnected(connection);
         std::cout << "[disconnected] client=" << connection.clientId << std::endl;
     }
 
   private:
-    static_assert(PacketHeader::MaxPacketSize <= MAX_BUFFER_SIZE);
+    static_assert(PacketHeader::MaxPacketSize <= MaxBufferSize);
     PacketHandler m_packetHandler;
 };
 

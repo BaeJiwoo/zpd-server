@@ -18,17 +18,16 @@
 class PacketHandler
 {
   public:
-    using SendCallback =
-        std::function<bool(ConnectionKey, const char*, std::uint32_t)>;
+    using SendCallback = std::function<bool(ConnectionKey, const char*, std::uint32_t)>;
 
-    // Call lifecycle functions from the server owner thread.
+    // Run과 Stop은 서버를 소유한 스레드에서 호출합니다.
     bool Run(SendCallback sendPacket);
     void Stop();
 
     void Reset(ConnectionKey connection)
     {
         std::lock_guard lock(m_mutex);
-        m_pending.erase(connection);
+        m_pendingBytesByConnection.erase(connection);
     }
 
     bool Handle(ConnectionKey connection, const char* data, std::size_t size)
@@ -41,52 +40,47 @@ class PacketHandler
         {
             std::lock_guard lock(m_mutex);
 
-
             if (!m_logicRunning)
                 return false;
 
-            auto& pending = m_pending[connection];
+            auto& pending = m_pendingBytesByConnection[connection];
             pending.insert(pending.end(), data, data + size);
 
             std::size_t consumed = 0;
             while (pending.size() - consumed >= PacketHeader::Size) {
                 const auto header = PacketHeader::Read(pending.data() + consumed);
-                if (header.size < PacketHeader::Size ||
-                    header.size > PacketHeader::MaxPacketSize) {
-                    m_pending.erase(connection);
+                if (header.size < PacketHeader::Size || header.size > PacketHeader::MaxPacketSize) {
+                    m_pendingBytesByConnection.erase(connection);
                     return false;
                 }
                 if (pending.size() - consumed < header.size)
                     break;
 
                 const char* payload = pending.data() + consumed + PacketHeader::Size;
-                
+
                 Packet request;
                 request.request = header.request;
                 request.error = header.error;
                 request.payload.assign(payload, payload + (header.size - PacketHeader::Size));
 
-
-                if (m_packetQueue.size() + m_liveConnections.size() >= MaxEventQueueSize) {
-                    m_pending.erase(connection);
+                if (m_eventQueue.size() + m_liveConnections.size() >= MaxEventQueueSize) {
+                    m_pendingBytesByConnection.erase(connection);
                     return false;
                 }
 
-                m_packetQueue.push({
-                    PacketHandlerEventType::PacketReceived,
-                    connection,
-                    std::move(request)
-                });
+                m_eventQueue.push(
+                    {PacketHandlerEventType::PacketReceived, connection, std::move(request)});
 
                 m_queueReady.notify_one();
 
                 consumed += header.size;
             }
 
-            pending.erase(pending.begin(), pending.begin() +
-                          static_cast<std::vector<char>::difference_type>(consumed));
+            pending.erase(pending.begin(),
+                          pending.begin() +
+                              static_cast<std::vector<char>::difference_type>(consumed));
             if (pending.empty())
-                m_pending.erase(connection);
+                m_pendingBytesByConnection.erase(connection);
         }
 
         return true;
@@ -97,11 +91,7 @@ class PacketHandler
     void EnqueueDisconnected(ConnectionKey connection);
 
   private:
-    struct PendingPacket
-    {
-        ConnectionKey connection{};
-        Packet packet;
-    };
+    static constexpr std::size_t MaxEventQueueSize = 1024;
 
     static Packet Dispatch(const Packet& requestPacket)
     {
@@ -132,19 +122,19 @@ class PacketHandler
     }
 
     void LogicWorker();
-    
+
     static Packet Echo(const Packet& requestPacket);
 
     std::mutex m_mutex;
-    std::map<ConnectionKey, std::vector<char>> m_pending;
+    std::map<ConnectionKey, std::vector<char>> m_pendingBytesByConnection;
     bool m_logicRunning = false;
-    //std::queue<PendingPacket> m_packetQueue;
-    std::queue<PacketHandlerEvent> m_packetQueue;
+    std::queue<PacketHandlerEvent> m_eventQueue;
     std::thread m_logicThread;
     SendCallback m_sendPacket;
     std::condition_variable m_queueReady;
-    static constexpr std::size_t MaxEventQueueSize = 1024;
+
+    // m_mutex로 보호하며, 연결 하나당 종료 이벤트용 자리 하나를 예약합니다.
     std::set<ConnectionKey> m_liveConnections;
 };
 
-#endif
+#endif // ZPD_PACKETHANDLER_HPP

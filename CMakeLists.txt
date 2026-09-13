@@ -49,10 +49,11 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(zpd-server-tests 
-        tests/server_tests.cpp 
+    add_executable(zpd-server-tests
+        tests/server_tests.cpp
         tests/echo_client.cpp
-        src/PacketHandler.cpp)
+        src/PacketHandler.cpp
+    )
     target_include_directories(zpd-server-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(zpd-server-tests PRIVATE cxx_std_20)
     set_target_properties(zpd-server-tests PROPERTIES CXX_EXTENSIONS OFF)
@@ -62,7 +63,7 @@ if(BUILD_TESTING)
             ws2_32
             protocol
     )
-    
+
     if(MSVC)
         target_compile_options(zpd-server-tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
     endif()

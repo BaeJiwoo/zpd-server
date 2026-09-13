@@ -1,5 +1,5 @@
-#ifndef ZPD_IOCP_SERVER_H
-#define ZPD_IOCP_SERVER_H
+#ifndef ZPD_IOCPSERVER_HPP
+#define ZPD_IOCPSERVER_HPP
 
 #include "ClientInfo.hpp"
 
@@ -18,7 +18,10 @@ class IOCPServer
         Stop();
     }
 
-    std::uint16_t Port() const { return m_port; }
+    std::uint16_t Port() const
+    {
+        return m_port;
+    }
 
     bool Start(std::uint16_t port, std::uint32_t maxClients, std::uint16_t workerCount = 0)
     {
@@ -45,8 +48,8 @@ class IOCPServer
             return FailStart();
 
         int addressSize = sizeof(address);
-        if (getsockname(m_listenSocket, reinterpret_cast<sockaddr*>(&address), &addressSize)
-            == SOCKET_ERROR)
+        if (getsockname(m_listenSocket, reinterpret_cast<sockaddr*>(&address), &addressSize) ==
+            SOCKET_ERROR)
             return FailStart();
         m_port = ntohs(address.sin_port);
 
@@ -66,9 +69,9 @@ class IOCPServer
                     std::clamp(std::thread::hardware_concurrency(), 1u, 65535u));
 
             for (std::uint16_t i = 0; i < workerCount; ++i)
-                m_workers.emplace_back([this] { WorkerLoop(); });
+                m_workerThreads.emplace_back([this] { WorkerLoop(); });
 
-            m_accepter = std::thread([this] { AcceptLoop(); });
+            m_acceptThread = std::thread([this] { AcceptLoop(); });
         } catch (...) {
             Stop();
             return false;
@@ -87,8 +90,8 @@ class IOCPServer
 
         closesocket(m_listenSocket);
 
-        if (m_accepter.joinable())
-            m_accepter.join();
+        if (m_acceptThread.joinable())
+            m_acceptThread.join();
         m_listenSocket = INVALID_SOCKET;
 
         for (auto& client : m_clients)
@@ -97,14 +100,14 @@ class IOCPServer
         for (auto& client : m_clients)
             client->WaitIdle();
 
-        for (std::size_t i = 0; i < m_workers.size(); ++i)
+        for (std::size_t i = 0; i < m_workerThreads.size(); ++i)
             PostQueuedCompletionStatus(m_iocp, 0, 0, nullptr);
 
-        for (auto& worker : m_workers)
+        for (auto& worker : m_workerThreads)
             if (worker.joinable())
                 worker.join();
 
-        m_workers.clear();
+        m_workerThreads.clear();
         m_clients.clear();
         CleanupHandles();
     }
@@ -112,16 +115,15 @@ class IOCPServer
   protected:
     bool Send(ConnectionKey connection, const char* data, std::uint32_t size)
     {
-        if (data == nullptr || size == 0 || size > MAX_BUFFER_SIZE ||
+        if (data == nullptr || size == 0 || size > MaxBufferSize ||
             connection.clientId >= m_clients.size()) {
             return false;
         }
 
         ClientInfo* client = m_clients[connection.clientId].get();
         std::lock_guard lock(client->m_mutex);
-        
-        if (!client->IsConnected() ||
-                client->m_generation != connection.generation) {
+
+        if (!client->IsConnected() || client->m_generation != connection.generation) {
             return false;
         }
 
@@ -137,8 +139,7 @@ class IOCPServer
         ClientInfo* client = m_clients[connection.clientId].get();
         std::lock_guard lock(client->m_mutex);
 
-        if (!client->IsConnected() ||
-            client->m_generation != connection.generation) {
+        if (!client->IsConnected() || client->m_generation != connection.generation) {
             return;
         }
 
@@ -197,7 +198,7 @@ class IOCPServer
             ClientInfo* client = nullptr;
             for (auto& candidate : m_clients) {
                 std::lock_guard lock(candidate->m_mutex);
-                if (!candidate->IsConnected() && candidate->m_pending == 0) {
+                if (!candidate->IsConnected() && candidate->m_pendingIoCount == 0) {
                     client = candidate.get();
                     break;
                 }
@@ -233,27 +234,31 @@ class IOCPServer
             auto* context = reinterpret_cast<IOContext*>(overlapped);
             std::lock_guard lock(client->m_mutex);
 
-            struct CompletionGuard {
+            struct CompletionGuard
+            {
                 ClientInfo* client;
-                ~CompletionGuard() { client->CompleteIo(); }
+                ~CompletionGuard()
+                {
+                    client->CompleteIo();
+                }
             } completion{client};
 
             if (!succeeded || transferred == 0 || !client->IsConnected()) {
                 DisconnectClient(client);
-                if (context->m_operation == IOOperation::Send)
+                if (context->operation == IOOperation::Send)
                     client->FinishSend();
                 continue;
             }
 
-            if (context->m_operation == IOOperation::Receive) {
-                OnReceived(client->Key(), context->m_storage, transferred);
+            if (context->operation == IOOperation::Receive) {
+                OnReceived(client->Key(), context->storage, transferred);
                 if (client->IsConnected() && !client->Receive()) {
                     DisconnectClient(client);
                 }
                 continue;
             }
 
-            if (transferred < context->m_buffer.len) {
+            if (transferred < context->buffer.len) {
                 if (!client->ContinueSend(context, transferred)) {
                     DisconnectClient(client);
                     client->FinishSend();
@@ -261,7 +266,7 @@ class IOCPServer
                 continue;
             }
 
-            OnSendCompleted(client->Key(), context->m_storage, context->m_dataSize);
+            OnSendCompleted(client->Key(), context->storage, context->dataSize);
             if (!client->FinishSend())
                 DisconnectClient(client);
         }
@@ -274,8 +279,8 @@ class IOCPServer
     HANDLE m_iocp = nullptr;
     std::atomic_bool m_running = false;
     std::vector<std::unique_ptr<ClientInfo>> m_clients;
-    std::thread m_accepter;
-    std::vector<std::thread> m_workers;
+    std::thread m_acceptThread;
+    std::vector<std::thread> m_workerThreads;
 };
 
-#endif
+#endif // ZPD_IOCPSERVER_HPP

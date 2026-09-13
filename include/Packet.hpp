@@ -20,8 +20,7 @@ struct PacketHeader
     RequestCode request = RequestCode::Echo;
     ErrorCode error = ErrorCode::None;
 
-    // The caller must supply at least Size bytes. Never copy a native struct
-    // onto the wire: its padding and byte order are implementation-dependent.
+    // 최소 Size 바이트가 필요합니다. 구조체 패딩과 무관하게 네트워크 바이트 순서로 읽습니다.
     static PacketHeader Read(const char* data) noexcept
     {
         return {
@@ -57,4 +56,4 @@ struct Packet
     }
 };
 
-#endif
+#endif // ZPD_PACKET_HPP

@@ -1,5 +1,5 @@
-#ifndef ZPD_DEFINE_H
-#define ZPD_DEFINE_H
+#ifndef ZPD_DEFINE_HPP
+#define ZPD_DEFINE_HPP
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <compare>
 
-constexpr DWORD MAX_BUFFER_SIZE = 4096;
+constexpr DWORD MaxBufferSize = 4096;
 
 enum class IOOperation
 {
@@ -20,11 +20,11 @@ enum class IOOperation
 
 struct IOContext
 {
-    OVERLAPPED m_overlapped{};
-    WSABUF m_buffer{};
-    IOOperation m_operation = IOOperation::Receive;
-    char m_storage[MAX_BUFFER_SIZE]{};
-    DWORD m_dataSize = 0;
+    OVERLAPPED overlapped{};
+    WSABUF buffer{};
+    IOOperation operation = IOOperation::Receive;
+    char storage[MaxBufferSize]{};
+    DWORD dataSize = 0;
 };
 
 struct ConnectionKey
@@ -36,4 +36,4 @@ struct ConnectionKey
     auto operator<=>(const ConnectionKey&) const = default;
 };
 
-#endif
+#endif // ZPD_DEFINE_HPP

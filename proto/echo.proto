@@ -2,13 +2,19 @@ syntax = "proto3";
 
 package protocol;
 
-message EchoRequest {
-  bytes data = 1;
+message EchoRequest
+{
+    bytes data = 1;
 }
 
-message EchoResponse {
-  bytes data = 1;
+message EchoResponse
+{
+    bytes data = 1;
 }
 
-message PingRequest {}
-message PingResponse {}
+message PingRequest
+{
+}
+message PingResponse
+{
+}

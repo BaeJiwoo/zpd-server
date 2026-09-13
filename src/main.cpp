@@ -15,10 +15,10 @@ int main(int argc, char* argv[])
     }
     if (argc == 2) {
         const std::string_view argument(argv[1]);
-        const auto [end, error] = std::from_chars(argument.data(),
-                                                 argument.data() + argument.size(), port);
-        if (error != std::errc{} || end != argument.data() + argument.size() ||
-            port == 0 || port > 65535) {
+        const auto [end, error] =
+            std::from_chars(argument.data(), argument.data() + argument.size(), port);
+        if (error != std::errc{} || end != argument.data() + argument.size() || port == 0 ||
+            port > 65535) {
             std::cerr << "Port must be an integer from 1 to 65535.\n";
             return EXIT_FAILURE;
         }

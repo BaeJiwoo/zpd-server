@@ -18,4 +18,4 @@ struct PacketHandlerEvent
     Packet packet; // PacketReceived 이벤트에서만 사용
 };
 
-#endif
+#endif // ZPD_PACKETHANDLEREVENT_HPP

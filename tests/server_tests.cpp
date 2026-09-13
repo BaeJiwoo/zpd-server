@@ -20,20 +20,27 @@ void Check(bool condition, const char* message)
         throw std::runtime_error(message);
 }
 
-struct Socket {
+struct Socket
+{
     SOCKET value = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    Socket() { Check(value != INVALID_SOCKET, "socket failed"); }
-    ~Socket() { closesocket(value); }
+    Socket()
+    {
+        Check(value != INVALID_SOCKET, "socket failed");
+    }
+    ~Socket()
+    {
+        closesocket(value);
+    }
     Socket(const Socket&) = delete;
     Socket& operator=(const Socket&) = delete;
 
     void Connect(std::uint16_t port)
     {
         DWORD timeout = 3000;
-        setsockopt(value, SOL_SOCKET, SO_RCVTIMEO,
-                   reinterpret_cast<const char*>(&timeout), sizeof(timeout));
-        setsockopt(value, SOL_SOCKET, SO_SNDTIMEO,
-                   reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+        setsockopt(value, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout),
+                   sizeof(timeout));
+        setsockopt(value, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout),
+                   sizeof(timeout));
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -48,8 +55,8 @@ void SendAll(SOCKET peer, const char* data, std::size_t size,
 {
     std::size_t sent = 0;
     while (sent < size) {
-        const int count = send(peer, data + sent,
-                               static_cast<int>((std::min)(size - sent, chunkSize)), 0);
+        const int count =
+            send(peer, data + sent, static_cast<int>((std::min)(size - sent, chunkSize)), 0);
         Check(count > 0, "send failed");
         sent += static_cast<std::size_t>(count);
     }
@@ -59,8 +66,7 @@ void ReceiveExact(SOCKET peer, char* data, std::size_t size)
 {
     std::size_t received = 0;
     while (received < size) {
-        const int count = recv(peer, data + received,
-                               static_cast<int>(size - received), 0);
+        const int count = recv(peer, data + received, static_cast<int>(size - received), 0);
         Check(count > 0, "recv failed or connection closed");
         received += static_cast<std::size_t>(count);
     }
@@ -118,8 +124,7 @@ std::string ReceiveEchoResponse(SOCKET peer)
     Check(packet.error == ErrorCode::None, "Echo returned an error");
 
     protocol::EchoResponse response;
-    Check(response.ParseFromArray(packet.payload.data(),
-                                  static_cast<int>(packet.payload.size())),
+    Check(response.ParseFromArray(packet.payload.data(), static_cast<int>(packet.payload.size())),
           "EchoResponse parsing failed");
     return response.data();
 }
@@ -140,7 +145,7 @@ void Echo(std::uint16_t port, std::size_t size)
         SendAll(peer.value, bytes.data(), bytes.size(), 997);
         const auto reply = ReceiveEchoResponse(peer.value);
         Check(reply.size() == length &&
-              std::equal(reply.begin(), reply.end(), payload.data() + offset),
+                  std::equal(reply.begin(), reply.end(), payload.data() + offset),
               "Echo packet payload changed");
         response += reply;
         offset += length;
@@ -153,7 +158,7 @@ void PacketProtocol(std::uint16_t port)
     Socket peer;
     peer.Connect(port);
 
-    // Literal wire bytes also check the protocol independently of Serialize().
+    // Serialize() 구현과 독립적으로 헤더 규격을 확인합니다.
     const char ping[] = {0x00, 0x04, 0x02, 0x00};
     SendAll(peer.value, ping, sizeof(ping), 1);
     char pong[sizeof(ping)];
@@ -264,9 +269,8 @@ int main(int argc, char* argv[])
         Echo(server.Port(), 256 * 1024);
         std::vector<std::future<void>> clients;
         for (int i = 0; i < 8; ++i)
-            clients.push_back(std::async(std::launch::async, [&server] {
-                Echo(server.Port(), 64 * 1024);
-            }));
+            clients.push_back(
+                std::async(std::launch::async, [&server] { Echo(server.Port(), 64 * 1024); }));
         for (auto& client : clients)
             client.get();
         for (int i = 0; i < 100; ++i)
@@ -276,8 +280,8 @@ int main(int argc, char* argv[])
         active.Connect(server.Port());
         const std::string pendingData(PacketHeader::MaxPayloadSize, 'x');
         std::size_t pendingDataSize = 0;
-        const Packet pending = BuildEchoRequest(pendingData.data(), pendingData.size(),
-                                                pendingDataSize);
+        const Packet pending =
+            BuildEchoRequest(pendingData.data(), pendingData.size(), pendingDataSize);
         const auto pendingBytes = pending.Serialize();
         SendAll(active.value, pendingBytes.data(), pendingBytes.size());
         server.Stop();
