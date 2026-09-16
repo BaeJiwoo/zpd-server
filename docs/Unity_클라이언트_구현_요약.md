@@ -39,10 +39,10 @@ Ping 요청, requestId=1의 검증용 바이트:
 
 서버의 다음 파일을 **그대로** 사용해 C# 코드를 생성합니다. 메시지 필드를 수동으로 다시 정의하지 않습니다.
 
-- `proto/echo.proto`: Echo, Ping
-- `proto/session.proto`: 개발용 입장
-- `proto/room.proto`: 방 생성·입장·퇴장, 참가자 알림
-- `proto/chat.proto`: 채팅
+- `common/proto/echo.proto`: Echo, Ping
+- `common/proto/session.proto`: 개발용 입장
+- `common/proto/room.proto`: 방 생성·입장·퇴장, 참가자 알림
+- `common/proto/chat.proto`: 채팅
 
 생성 예시(서버 저장소 루트에서, `Generated` 폴더를 먼저 생성):
 
@@ -178,4 +178,4 @@ Disconnected → AwaitingEntry → Lobby → InRoom
 .\out\build\refactor-debug\Debug\zpd-server.exe 20000
 ```
 
-참조 클라이언트: `client/RoomChatCommands.cpp`, `client/RoomChatReceiver.cpp`. 정확한 스키마·상수의 기준은 `proto/*.proto`, `include/ProtocolLimits.hpp`, `include/MessageCode.hpp`, `include/ErrorCode.hpp`입니다. 상세 서버 규격은 [MO 통신 규격](MO_통신_규격.md)을 참고하세요.
+참조 클라이언트: `mockclient/src/RoomChatCommands.cpp`, `mockclient/src/RoomChatReceiver.cpp`. 정확한 스키마·상수의 기준은 `common/proto/*.proto`, `common/include/ProtocolLimits.hpp`, `common/include/MessageCode.hpp`, `common/include/ErrorCode.hpp`입니다. 상세 서버 규격은 [MO 통신 규격](MO_통신_규격.md)을 참고하세요.

@@ -18,7 +18,7 @@
 
 ## 메시지
 
-본문 타입은 `protocol` 네임스페이스의 `proto/echo.proto`, `session.proto`, `room.proto`, `chat.proto` 메시지입니다.
+본문 타입은 `protocol` 네임스페이스의 `common/proto/echo.proto`, `session.proto`, `room.proto`, `chat.proto` 메시지입니다.
 
 | 요청 코드·타입 | 응답 코드·타입 | 본문 |
 |---|---|---|

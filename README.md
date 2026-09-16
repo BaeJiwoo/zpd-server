@@ -61,31 +61,44 @@ ctest --preset release
 Actual interactive-client regression checks (Python 3 standard library only) also exercise notifications while input is idle, shutdown, malformed responses and outstanding request cleanup:
 
 ```powershell
-python tests/chat_client_tests.py out/build/windows-x64/Debug
+python mockclient/tests/chat_client_tests.py out/build/windows-x64/Debug
 ```
 
 The dedicated interactive executable is `zpd-client.exe`. The existing `zpd-server-tests.exe <port>` entry point is retained for compatibility. See [code organization](docs/코드_구조.md) for module responsibilities and naming changes.
 
 ## Project structure
 
-- `include/ZPDServer.hpp`: echo callbacks and connection, send, and disconnect logs
-- `include/IOCPServer.hpp`: connection acceptance, IOCP workers, and shutdown
-- `include/ClientConnection.hpp`: per-connection sockets, send queues, and pending I/O tracking
-- `include/ConnectionKey.hpp`, `NetworkIo.hpp`: connection identity and Windows I/O data
-- `include/ProtocolLimits.hpp`, `NetworkSettings.hpp`, `ServerLimits.hpp`: protocol and runtime limits
-- `include/GameWorld.hpp`, `src/GameWorld.cpp`: player state and request dispatch
-- `src/RoomRequests.cpp`, `src/ChatRequests.cpp`: room membership and chat
-- `proto/echo.proto`, `session.proto`, `room.proto`, `chat.proto`: feature-specific wire messages
-- `include/winsock.hpp` and `src/winsock.cpp`: standalone WinSock2 initialization check
-- `src/main.cpp`: server startup and shutdown input
-- `client/`: dedicated room chat client, console input, commands and server-message processing
-- `tests/server_tests.cpp`: automated TCP integration tests
-- `CMakeLists.txt`: targets, C++20 settings, include paths, and WinSock2 linking
-- `CMakePresets.json`: Windows x64 configuration and Debug/Release build presets
-- `vcpkg.json`: dependencies and baseline commit
-- `.vscode/`: extension recommendations, IntelliSense, build tasks, and debugging
+```text
+root/
+├── mockclient/
+│   ├── include/
+│   ├── src/
+│   ├── tests/
+│   └── CMakeLists.txt
+├── common/
+│   ├── include/
+│   ├── proto/
+│   ├── README.md
+│   └── CMakeLists.txt
+├── server/
+│   ├── include/
+│   ├── src/
+│   ├── tests/
+│   └── CMakeLists.txt
+├── docs/
+├── CMakeLists.txt
+├── CMakePresets.json
+└── vcpkg.json
+```
 
-Place project headers under `include/` and include them using paths such as `#include "ZPDServer.hpp"`. CMake provides the same include path to the compiler and VS Code IntelliSense. Add new implementation files to the appropriate CMake target.
+- `mockclient`: the console room chat client and its process regression tests.
+- `common`: Protobuf schemas, message/error codes, packet framing, protocol limits, shared C++ network defaults and serialization helpers. See [Unity sharing](common/README.md).
+- `server`: IOCP transport, connection management, game/room/chat logic and server integration tests.
+- `docs`: requirements, protocol specification and design notes.
+
+Each module owns its CMake targets. The root configures shared build options and includes the modules. Headers are exposed through target dependencies; the mock client does not include server headers. Add implementation files to the owning module's `CMakeLists.txt`.
+
+Executables remain under `out/build/windows-x64/Debug` or `Release`, so existing run commands and VS Code tasks continue to work. Run build and test commands from the repository root.
 
 ## Server behavior
 
