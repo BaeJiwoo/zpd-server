@@ -21,7 +21,6 @@ class PacketHandler
   public:
     using SendCallback = std::function<bool(ConnectionKey, const char*, std::uint32_t)>;
 
-    // Start와 Stop은 서버를 소유한 스레드에서 호출합니다.
     using DisconnectCallback = std::function<void(ConnectionKey)>;
 
     bool Start(SendCallback sendPacket, DisconnectCallback disconnect = {});
@@ -48,7 +47,6 @@ class PacketHandler
     DisconnectCallback m_disconnect;
     std::condition_variable m_queueReady;
 
-    // m_mutex로 보호하며, 연결 하나당 종료 이벤트용 자리 하나를 예약합니다.
     std::set<ConnectionKey> m_liveConnections;
 };
 

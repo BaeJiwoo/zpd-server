@@ -23,14 +23,14 @@ struct Packet
         const auto size = static_cast<std::uint16_t>(ProtocolLimits::HeaderSize + payload.size());
         std::vector<char> bytes;
         bytes.reserve(size);
-        bytes.push_back(static_cast<char>((size >> 8) & 0xff));
-        bytes.push_back(static_cast<char>(size & 0xff));
+        bytes.push_back(static_cast<char>((size >> 8) & 255));
+        bytes.push_back(static_cast<char>(size & 255));
         bytes.push_back(static_cast<char>(code));
         bytes.push_back(static_cast<char>(error));
-        bytes.push_back(static_cast<char>((requestId >> 24) & 0xff));
-        bytes.push_back(static_cast<char>((requestId >> 16) & 0xff));
-        bytes.push_back(static_cast<char>((requestId >> 8) & 0xff));
-        bytes.push_back(static_cast<char>(requestId & 0xff));
+        bytes.push_back(static_cast<char>((requestId >> 24) & 255));
+        bytes.push_back(static_cast<char>((requestId >> 16) & 255));
+        bytes.push_back(static_cast<char>((requestId >> 8) & 255));
+        bytes.push_back(static_cast<char>(requestId & 255));
         bytes.insert(bytes.end(), payload.begin(), payload.end());
         return bytes;
     }

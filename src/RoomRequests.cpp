@@ -12,7 +12,7 @@ template <typename Message> void RoomSnapshot(Packet& packet, const RoomSession&
         message.add_player_ids(id);
     ProtobufCodec::SerializePayload(packet, message);
 }
-} // namespace
+}
 
 Packet GameWorld::HandleRoomRequest(const Packet& request, PlayerSession& session,
                                     std::vector<OutboundPacket>& notifications)
@@ -87,7 +87,6 @@ Packet GameWorld::HandleRoomRequest(const Packet& request, PlayerSession& sessio
         response.error = ErrorCode::RoomFull;
         return response;
     }
-    // Prepare the snapshot and notifications before committing both membership views.
     auto updated = it->second;
     updated.playerIds.insert(session.playerId);
     RoomSnapshot<protocol::JoinRoomResponse>(response, updated);

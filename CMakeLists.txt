@@ -57,7 +57,6 @@ target_link_libraries(zpd-client PRIVATE chat_client)
 include(CTest)
 if(BUILD_TESTING)
     add_executable(zpd-server-tests tests/server_tests.cpp)
-    # Retain the legacy interactive entry point while zpd-client is the dedicated client.
     target_link_libraries(zpd-server-tests PRIVATE server_core chat_client)
     add_test(NAME server-integration COMMAND zpd-server-tests --no-pause)
     set_tests_properties(server-integration PROPERTIES TIMEOUT 45)

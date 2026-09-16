@@ -5,6 +5,6 @@ namespace zpd {
 
 [[nodiscard]] bool CheckWinsock();
 
-} // namespace zpd
+}
 
 #endif // ZPD_WINSOCK_HPP

@@ -84,7 +84,6 @@ Packet GameWorld::HandleEnterRequest(const Packet& requestPacket, PlayerSession&
         return response;
     }
 
-    // 0은 입장 전 ID이며, 카운터가 소진돼도 재사용하지 않습니다.
     if (m_nextPlayerId == 0) {
         response.error = ErrorCode::UnknownError;
         return response;

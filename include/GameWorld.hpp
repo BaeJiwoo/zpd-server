@@ -6,7 +6,6 @@
 #include <map>
 #include <vector>
 
-// Owned by the logic worker. No socket callbacks, mutexes or threads belong here.
 class GameWorld
 {
   public:
@@ -29,7 +28,6 @@ class GameWorld
 
     Packet HandleEnterRequest(const Packet& requestPacket, PlayerSession& session);
 
-    // Player and room indexes are updated only by this game world.
     std::map<ConnectionKey, PlayerSession> m_sessions;
     std::map<std::uint64_t, ConnectionKey> m_connectionsByPlayerId;
     std::map<std::uint64_t, RoomSession> m_rooms;

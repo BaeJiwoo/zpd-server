@@ -8,5 +8,5 @@ inline constexpr std::uint32_t InfiniteReceiveTimeout = 0;
 inline constexpr auto InputPollInterval = std::chrono::milliseconds(20);
 inline constexpr const char* CommandHelp =
     "/enter /create <capacity> /join <roomId> /leave /members /ping /say <text> /echo <text> /quit";
-} // namespace ClientSettings
+}
 #endif // ZPD_CLIENTSETTINGS_HPP

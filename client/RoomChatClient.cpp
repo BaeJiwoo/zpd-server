@@ -62,7 +62,6 @@ bool RoomChatClient::SendRequest(Packet packet, PendingRequest pending)
         std::lock_guard lock(m_mutex);
         if (!m_running)
             return false;
-        // IDs may wrap, but must never collide with an outstanding request.
         do {
             packet.requestId = m_nextRequestId++;
         } while (packet.requestId == 0 || m_pending.contains(packet.requestId));

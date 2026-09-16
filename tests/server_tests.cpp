@@ -166,16 +166,15 @@ void PacketProtocol(std::uint16_t port)
     Socket peer;
     peer.Connect(port);
 
-    // Serialize() 구현과 독립적으로 헤더 규격을 확인합니다.
-    const char ping[] = {0x00, 0x08, 0x02, 0x00, 0x12, 0x34, 0x56, 0x78};
+    const char ping[] = {0, 8, 2, 0, 18, 52, 86, 120};
     SendAll(peer.value, ping, sizeof(ping), 1);
     char pong[sizeof(ping)];
     ReceiveExact(peer.value, pong, sizeof(pong));
-    const char expectedPong[] = {0x00, 0x08, static_cast<char>(0x82), 0x00, 0x12, 0x34, 0x56, 0x78};
+    const char expectedPong[] = {0, 8, static_cast<char>(130), 0, 18, 52, 86, 120};
     Check(std::equal(std::begin(expectedPong), std::end(expectedPong), std::begin(pong)),
           "Ping wire response changed");
 
-    const std::string rawEcho{'a', '\0', static_cast<char>(0xff), 'z'};
+    const std::string rawEcho{'a', '\0', static_cast<char>(255), 'z'};
     std::size_t encodedDataSize = 0;
     const Packet echo = BuildEchoRequest(rawEcho.data(), rawEcho.size(), encodedDataSize);
     Check(encodedDataSize == rawEcho.size(), "raw Echo request was unexpectedly split");
@@ -183,7 +182,6 @@ void PacketProtocol(std::uint16_t port)
     SendAll(peer.value, echoBytes.data(), echoBytes.size(), 1);
     Check(ReceiveEchoResponse(peer.value, echo.requestId) == rawEcho, "raw Echo response changed");
 
-    // Write several frames together; read each response by its header length.
     std::vector<char> combined(echoBytes);
     combined.insert(combined.end(), std::begin(ping), std::end(ping));
     auto secondEcho = echo;
@@ -208,7 +206,7 @@ void PacketProtocol(std::uint16_t port)
               "invalid error response");
     };
     Packet unknown;
-    unknown.code = static_cast<MessageCode>(0x7f);
+    unknown.code = static_cast<MessageCode>(127);
     expectError(unknown, MessageCode::ErrorResponse, ErrorCode::UnknownRequest);
     for (const auto code :
          {MessageCode::EchoResponse, MessageCode::PingResponse, MessageCode::EnterResponse,
@@ -237,8 +235,7 @@ void PacketProtocol(std::uint16_t port)
     SendAll(peer.value, ping, sizeof(ping));
     CheckResponse(peer.value, MessageCode::PingResponse, ErrorCode::None);
 
-    // Empty EnterRequest, followed by a repeated entry on the same connection.
-    const char enter[] = {0x00, 0x08, 0x03, 0x00, 0, 0, 0, 9};
+    const char enter[] = {0, 8, 3, 0, 0, 0, 0, 9};
     SendAll(peer.value, enter, sizeof(enter));
     const auto entered = ReceivePacket(peer.value);
     Check(entered.code == MessageCode::EnterResponse, "expected Enter response");
@@ -256,7 +253,7 @@ void InvalidPacketSize(std::uint16_t port, std::uint16_t size)
     Socket peer;
     peer.Connect(port);
     const char bytes[] = {static_cast<char>(size >> 8),
-                          static_cast<char>(size & 0xff),
+                          static_cast<char>(size & 255),
                           static_cast<char>(MessageCode::EchoRequest),
                           0,
                           0,
@@ -395,7 +392,7 @@ void RoomProtocol(std::uint16_t port)
     Exchange(first.value, Join(999999), ErrorCode::RoomNotFound);
     Exchange(first.value, Leave(), ErrorCode::NotInRoom);
     auto malformed = Create(2);
-    malformed.payload = {static_cast<char>(0x80)};
+    malformed.payload = {static_cast<char>(128)};
     Exchange(first.value, malformed, ErrorCode::InvalidPayload);
     const auto created = Parse<protocol::CreateRoomResponse>(Exchange(first.value, Create(2)));
     const auto roomId = created.room_id();
@@ -424,15 +421,14 @@ void RoomProtocol(std::uint16_t port)
     Exchange(first.value, ChatRequest(""), ErrorCode::InvalidPayload);
     Exchange(first.value, ChatRequest(std::string(1025, 'x')), ErrorCode::InvalidPayload);
     auto badChat = ChatRequest("valid");
-    badChat.payload = {static_cast<char>(0x80)};
+    badChat.payload = {static_cast<char>(128)};
     Exchange(first.value, badChat, ErrorCode::InvalidPayload);
-    badChat.payload = {0x0a, 0x01, static_cast<char>(0xff)};
+    badChat.payload = {10, 1, static_cast<char>(255)};
     Exchange(first.value, badChat, ErrorCode::InvalidPayload);
 
     Exchange(third.value, Join(roomId), ErrorCode::RoomFull);
     Exchange(second.value, Join(roomId), ErrorCode::AlreadyInRoom);
     Exchange(second.value, Create(2), ErrorCode::AlreadyInRoom);
-    // Ping barriers also prove that errors/self/other-room changes produced no extra notifications.
     Exchange(first.value, Ping());
     Exchange(second.value, Ping());
     Exchange(isolated.value, Ping());
@@ -443,7 +439,6 @@ void RoomProtocol(std::uint16_t port)
     Exchange(first.value, Leave(), ErrorCode::NotInRoom);
     Exchange(third.value, Join(roomId));
     Notification(second.value, true, roomId, thirdId);
-    // Abrupt close uses the same leave path and produces exactly one notification.
     linger reset{1, 0};
     setsockopt(third.value, SOL_SOCKET, SO_LINGER, reinterpret_cast<const char*>(&reset),
                sizeof(reset));
@@ -458,7 +453,6 @@ void RoomProtocol(std::uint16_t port)
     Exchange(isolated.value, Leave());
     Exchange(first.value, Join(other.room_id()), ErrorCode::RoomNotFound);
 
-    // Two contenders race for the final slot: precisely one succeeds.
     const auto raceRoom =
         Parse<protocol::CreateRoomResponse>(Exchange(first.value, Create(2))).room_id();
     auto a = std::async(std::launch::async, [&] {
@@ -483,7 +477,6 @@ void RoomProtocol(std::uint16_t port)
     Exchange(first.value, Ping());
 }
 
-// Deterministic logic-worker checks for stale generations and failed notification recipients.
 void LogicLifecycle()
 {
     PacketHandler handler;
@@ -536,7 +529,7 @@ void LogicLifecycle()
     Check(handler.EnqueueConnected(current), "new generation connect failed");
     submit(current, Request(MessageCode::EnterRequest, protocol::EnterRequest{}));
     take(current);
-    handler.EnqueueDisconnected(old); // Cannot remove the new generation.
+    handler.EnqueueDisconnected(old);
     const auto stale = Ping().Serialize();
     Check(!handler.ReceiveBytes(old, stale.data(), stale.size()), "stale key was accepted");
     submit(current, Join(oldRoom));
@@ -561,7 +554,7 @@ void LogicLifecycle()
     Check(take(observer).code == MessageCode::PlayerLeft,
           "failed send did not clean up membership");
     Check(take(joining).code == MessageCode::PlayerLeft, "failed send leave notification missing");
-    handler.EnqueueDisconnected(current); // Duplicate cleanup has no second notification.
+    handler.EnqueueDisconnected(current);
     submit(observer, Ping());
     Check(take(observer).code == MessageCode::PingResponse, "duplicate leave notification");
     handler.Stop();

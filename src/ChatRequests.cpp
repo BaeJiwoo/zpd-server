@@ -34,7 +34,6 @@ Packet GameWorld::HandleChatRequest(const Packet& request, const PlayerSession& 
     Packet notification;
     notification.code = MessageCode::ChatMessage;
     ProtobufCodec::SerializePayload(notification, broadcast);
-    // Include the sender so everyone sees the same server-ordered chat stream.
     for (auto id : room->second.playerIds) {
         const auto connection = m_connectionsByPlayerId.find(id);
         if (connection != m_connectionsByPlayerId.end())

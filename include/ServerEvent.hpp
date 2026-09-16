@@ -15,7 +15,7 @@ struct ServerEvent
 {
     ServerEventType type{};
     ConnectionKey connection{};
-    Packet packet; // PacketReceived 이벤트에서만 사용
+    Packet packet;
 };
 
 #endif // ZPD_SERVEREVENT_HPP

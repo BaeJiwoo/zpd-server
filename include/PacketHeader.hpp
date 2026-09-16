@@ -12,8 +12,6 @@ struct PacketHeader
     std::uint32_t requestId = 0;
     ErrorCode error = ErrorCode::None;
 
-    // 최소 ProtocolLimits::HeaderSize 바이트가 필요합니다. 구조체 패딩과 무관하게 네트워크 바이트
-    // 순서로 읽습니다.
     static PacketHeader Read(const char* data) noexcept
     {
         PacketHeader header;

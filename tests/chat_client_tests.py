@@ -1,4 +1,3 @@
-"""Run actual interactive clients with redirected input; no third-party packages required."""
 import pathlib
 import queue
 import re
@@ -77,7 +76,7 @@ try:
     room_id = int(re.search(r"Room (\d+)", room_line)[1])
     second.command(f"/join {room_id}")
     second.expect("(2/2)")
-    first.expect(f"PlayerJoined: {ids[1]}")  # No input to first while it receives this.
+    first.expect(f"PlayerJoined: {ids[1]}")
     first.expect("(2/2)")
     first.command("안녕하세요 👋")
     first.expect(f"[Player {ids[0]}] 안녕하세요 👋")
@@ -106,9 +105,8 @@ try:
     server.command("")
     assert server.process.wait(timeout=5) == 0
     first.expect("Server disconnected")
-    assert first.process.wait(timeout=3) == 1  # stdin is still open, without a newline.
+    assert first.process.wait(timeout=3) == 1
 
-    # Fake peers exercise error reporting and pending-request cleanup in the actual client.
     for malformed in (False, True):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
@@ -123,8 +121,7 @@ try:
                 while len(data) < 8:
                     data += peer.recv(8 - len(data))
                 if malformed:
-                    # Successful Ping response with a forbidden body.
-                    peer.sendall(struct.pack("!HBBI", 9, 0x82, 0, struct.unpack("!I", data[4:])[0]) + b"x")
+                    peer.sendall(struct.pack("!HBBI", 9, 130, 0, struct.unpack("!I", data[4:])[0]) + b"x")
                     bad.expect("Unexpected Ping body")
             bad.expect("failed: connection closed")
             assert bad.process.wait(timeout=3) == 1

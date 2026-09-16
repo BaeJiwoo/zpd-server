@@ -161,8 +161,6 @@ void PacketHandler::SendPacket(ConnectionKey connection, const Packet& packet)
         if (!m_logicRunning || !m_liveConnections.contains(connection))
             return;
     }
-    // The transport checks generation under the connection lock.
-    // Keep each recipient independent, including callbacks which throw.
     try {
         const auto bytes = packet.Serialize();
         if (!m_sendPacket(connection, bytes.data(), static_cast<std::uint32_t>(bytes.size())))
@@ -178,7 +176,6 @@ void PacketHandler::DisconnectFailedConnection(ConnectionKey connection)
         try {
             m_disconnect(connection);
         } catch (...) {
-            // Still schedule logic cleanup if a custom transport callback fails.
         }
     }
     EnqueueDisconnected(connection);

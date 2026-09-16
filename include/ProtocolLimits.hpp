@@ -14,6 +14,6 @@ inline constexpr std::size_t MaxPayloadBytes = MaxPacketBytes - HeaderSize;
 inline constexpr std::size_t MaxChatTextBytes = 1024;
 inline constexpr std::uint32_t MinRoomCapacity = 1;
 inline constexpr std::uint32_t MaxRoomCapacity = 16;
-} // namespace ProtocolLimits
+}
 
 #endif // ZPD_PROTOCOLLIMITS_HPP

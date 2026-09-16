@@ -5,25 +5,25 @@
 
 enum class MessageCode : std::uint8_t
 {
-    EchoRequest = 0x01,
-    PingRequest = 0x02,
-    EnterRequest = 0x03,
-    CreateRoomRequest = 0x04,
-    JoinRoomRequest = 0x05,
-    LeaveRoomRequest = 0x06,
-    ChatRequest = 0x07,
+    EchoRequest = 1,
+    PingRequest = 2,
+    EnterRequest = 3,
+    CreateRoomRequest = 4,
+    JoinRoomRequest = 5,
+    LeaveRoomRequest = 6,
+    ChatRequest = 7,
 
-    EchoResponse = 0x81,
-    PingResponse = 0x82,
-    EnterResponse = 0x83,
-    CreateRoomResponse = 0x84,
-    JoinRoomResponse = 0x85,
-    LeaveRoomResponse = 0x86,
-    ChatResponse = 0x87,
-    PlayerJoined = 0xc1,
-    PlayerLeft = 0xc2,
-    ChatMessage = 0xc3,
-    ErrorResponse = 0xff,
+    EchoResponse = 129,
+    PingResponse = 130,
+    EnterResponse = 131,
+    CreateRoomResponse = 132,
+    JoinRoomResponse = 133,
+    LeaveRoomResponse = 134,
+    ChatResponse = 135,
+    PlayerJoined = 193,
+    PlayerLeft = 194,
+    ChatMessage = 195,
+    ErrorResponse = 255,
 };
 
 constexpr MessageCode ResponseCodeFor(MessageCode request) noexcept

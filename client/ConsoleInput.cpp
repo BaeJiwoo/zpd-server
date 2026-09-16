@@ -36,8 +36,8 @@ void RunConsoleInput(RoomChatClient& client)
                 if (!consoleLine.empty()) {
                     const auto last = consoleLine.back();
                     consoleLine.pop_back();
-                    if (last >= 0xdc00 && last <= 0xdfff && !consoleLine.empty() &&
-                        consoleLine.back() >= 0xd800 && consoleLine.back() <= 0xdbff)
+                    if (last >= 56320 && last <= 57343 && !consoleLine.empty() &&
+                        consoleLine.back() >= 55296 && consoleLine.back() <= 56319)
                         consoleLine.pop_back();
                     std::cout << "\b \b" << std::flush;
                 }

@@ -18,5 +18,5 @@ template <typename Message> void SerializePayload(Packet& packet, const Message&
     packet.payload.assign(bytes.begin(), bytes.end());
 }
 
-} // namespace ProtobufCodec
+}
 #endif // ZPD_PROTOBUFCODEC_HPP
