@@ -11,9 +11,9 @@
       "problemMatcher": []
     },
     {
-      "label": "Test: Interactive Echo Client",
+      "label": "Client: Run Room Chat",
       "type": "process",
-      "command": "${workspaceFolder}/out/build/windows-x64/Debug/zpd-server-tests.exe",
+      "command": "${workspaceFolder}/out/build/windows-x64/Debug/zpd-client.exe",
       "options": { "cwd": "${workspaceFolder}" },
       "group": { "kind": "test", "isDefault": true },
       "presentation": { "reveal": "always", "focus": true, "panel": "dedicated", "clear": true },

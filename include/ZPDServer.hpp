@@ -9,13 +9,11 @@ class ZPDServer final : public IOCPServer
   public:
     bool Start(std::uint16_t port, std::uint32_t maxClients, std::uint16_t workerCount = 0)
     {
-        if (!m_packetHandler.Run(
+        if (!m_packetHandler.Start(
                 [this](ConnectionKey connection, const char* bytes, std::uint32_t length) {
-                    if (Send(connection, bytes, length))
-                        return true;
-                    Disconnect(connection);
-                    return false;
-                }))
+                    return Send(connection, bytes, length);
+                },
+                [this](ConnectionKey connection) { Disconnect(connection); }))
             return false;
 
         if (!IOCPServer::Start(port, maxClients, workerCount)) {
@@ -42,37 +40,37 @@ class ZPDServer final : public IOCPServer
             Disconnect(connection);
             return;
         }
-        std::cout << "[connected] client=" << connection.clientId << std::endl;
+        std::cout << "[connected] client=" << connection.slotIndex << std::endl;
     }
 
     void OnReceived(ConnectionKey connection, const char* data, DWORD size) override
     {
 
-        auto clientId = connection.clientId;
+        auto slotIndex = connection.slotIndex;
         try {
-            if (m_packetHandler.Handle(connection, data, size)) {
+            if (m_packetHandler.ReceiveBytes(connection, data, size)) {
                 return;
             }
-            std::cerr << "[packet or send failed] client=" << clientId << std::endl;
+            std::cerr << "[packet or send failed] client=" << slotIndex << std::endl;
         } catch (...) {
-            std::cerr << "[packet handling failed] client=" << clientId << std::endl;
+            std::cerr << "[packet handling failed] client=" << slotIndex << std::endl;
         }
         Disconnect(connection);
     }
 
     void OnSendCompleted(ConnectionKey connection, const char*, DWORD size) override
     {
-        std::cout << "[sent] client=" << connection.clientId << " bytes=" << size << std::endl;
+        std::cout << "[sent] client=" << connection.slotIndex << " bytes=" << size << std::endl;
     }
 
     void OnDisconnected(ConnectionKey connection) override
     {
         m_packetHandler.EnqueueDisconnected(connection);
-        std::cout << "[disconnected] client=" << connection.clientId << std::endl;
+        std::cout << "[disconnected] client=" << connection.slotIndex << std::endl;
     }
 
   private:
-    static_assert(PacketHeader::MaxPacketSize <= MaxBufferSize);
+    static_assert(ProtocolLimits::MaxPacketBytes <= NetworkSettings::ReceiveBufferBytes);
     PacketHandler m_packetHandler;
 };
 

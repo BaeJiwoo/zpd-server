@@ -1,7 +1,8 @@
-#ifndef ZPD_CLIENTINFO_HPP
-#define ZPD_CLIENTINFO_HPP
+#ifndef ZPD_CLIENTCONNECTION_HPP
+#define ZPD_CLIENTCONNECTION_HPP
 
-#include "Define.hpp"
+#include "NetworkIo.hpp"
+#include "ConnectionKey.hpp"
 
 #include <atomic>
 #include <cstring>
@@ -10,16 +11,16 @@
 #include <memory>
 #include <mutex>
 
-class ClientInfo
+class ClientConnection
 {
     friend class IOCPServer;
 
   public:
-    explicit ClientInfo(std::uint32_t index) : m_index(index)
+    explicit ClientConnection(std::uint32_t index) : m_index(index)
     {
-        m_receiveContext.operation = IOOperation::Receive;
+        m_receiveContext.operation = NetworkIoOperation::Receive;
         m_receiveContext.buffer.buf = m_receiveContext.storage;
-        m_receiveContext.buffer.len = MaxBufferSize;
+        m_receiveContext.buffer.len = NetworkSettings::ReceiveBufferBytes;
     }
 
     std::uint32_t Index() const
@@ -61,7 +62,7 @@ class ClientInfo
             return false;
         ZeroMemory(&m_receiveContext.overlapped, sizeof(m_receiveContext.overlapped));
         m_receiveContext.buffer.buf = m_receiveContext.storage;
-        m_receiveContext.buffer.len = MaxBufferSize;
+        m_receiveContext.buffer.len = NetworkSettings::ReceiveBufferBytes;
 
         DWORD flags = 0;
         DWORD received = 0;
@@ -77,15 +78,16 @@ class ClientInfo
     bool Send(const char* data, std::uint32_t size)
     {
         std::lock_guard lock(m_mutex);
-        if (!m_connected.load() || data == nullptr || size == 0 || size > MaxBufferSize) {
+        if (!m_connected.load() || data == nullptr || size == 0 ||
+            size > NetworkSettings::ReceiveBufferBytes) {
             return false;
         }
 
-        if (m_sendQueue.size() >= 256)
+        if (m_sendQueue.size() >= NetworkSettings::MaxQueuedSends)
             return false;
-        auto owned = std::make_unique<IOContext>();
+        auto owned = std::make_unique<NetworkIoContext>();
         auto* context = owned.get();
-        context->operation = IOOperation::Send;
+        context->operation = NetworkIoOperation::Send;
         context->dataSize = size;
         std::memcpy(context->storage, data, size);
         context->buffer.buf = context->storage;
@@ -98,7 +100,7 @@ class ClientInfo
         return false;
     }
 
-    bool ContinueSend(IOContext* context, DWORD transferred)
+    bool ContinueSend(NetworkIoContext* context, DWORD transferred)
     {
         std::lock_guard lock(m_mutex);
         if (transferred >= context->buffer.len)
@@ -132,7 +134,7 @@ class ClientInfo
     }
 
   private:
-    bool PostSend(IOContext* context)
+    bool PostSend(NetworkIoContext* context)
     {
         if (!m_connected)
             return false;
@@ -174,12 +176,12 @@ class ClientInfo
     std::recursive_mutex m_mutex;
     std::condition_variable_any m_idle;
     std::size_t m_pendingIoCount = 0;
-    std::deque<std::unique_ptr<IOContext>> m_sendQueue;
+    std::deque<std::unique_ptr<NetworkIoContext>> m_sendQueue;
     std::uint32_t m_index;
     SOCKET m_socket = INVALID_SOCKET;
     std::atomic_bool m_connected = false;
-    IOContext m_receiveContext;
+    NetworkIoContext m_receiveContext;
     std::uint64_t m_generation = 0;
 };
 
-#endif // ZPD_CLIENTINFO_HPP
+#endif // ZPD_CLIENTCONNECTION_HPP

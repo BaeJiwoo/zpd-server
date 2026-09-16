@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package protocol;
+
+message CreateRoomRequest
+{
+    uint32 capacity = 1;
+}
+message CreateRoomResponse
+{
+    uint64 room_id = 1;
+    uint32 capacity = 2;
+    repeated uint64 player_ids = 3;
+}
+message JoinRoomRequest
+{
+    uint64 room_id = 1;
+}
+message JoinRoomResponse
+{
+    uint64 room_id = 1;
+    uint32 capacity = 2;
+    repeated uint64 player_ids = 3;
+}
+message LeaveRoomRequest
+{
+}
+message LeaveRoomResponse
+{
+    uint64 room_id = 1;
+}
+message PlayerJoined
+{
+    uint64 room_id = 1;
+    uint64 player_id = 2;
+}
+message PlayerLeft
+{
+    uint64 room_id = 1;
+    uint64 player_id = 2;
+}

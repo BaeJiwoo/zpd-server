@@ -1,18 +1,18 @@
 #include "PacketHandler.hpp"
-#include "proto/echo.pb.h"
-#include "PacketCode.hpp"
+#include "MessageCode.hpp"
 #include "Packet.hpp"
 
 #include <exception>
 #include <iostream>
 #include <set>
 
-bool PacketHandler::Run(SendCallback sendPacket)
+bool PacketHandler::Start(SendCallback sendPacket, DisconnectCallback disconnect)
 {
     if (m_logicRunning || !sendPacket)
         return false;
 
     m_sendPacket = std::move(sendPacket);
+    m_disconnect = std::move(disconnect);
 
     m_logicRunning = true;
 
@@ -21,6 +21,7 @@ bool PacketHandler::Run(SendCallback sendPacket)
     } catch (...) {
         m_logicRunning = false;
         m_sendPacket = {};
+        m_disconnect = {};
         return false;
     }
     return true;
@@ -28,41 +29,30 @@ bool PacketHandler::Run(SendCallback sendPacket)
 
 void PacketHandler::Stop()
 {
-    if (!m_logicRunning)
-        return;
-
     {
-        {
-            std::unique_lock lock(m_mutex);
-            m_logicRunning = false;
-        }
-        m_queueReady.notify_all();
-
-        if (m_logicThread.joinable()) {
-            m_logicThread.join();
-        }
-
-        {
-            std::unique_lock lock(m_mutex);
-            while (!m_eventQueue.empty()) {
-                m_eventQueue.pop();
-            }
-
-            m_pendingBytesByConnection.clear();
-            m_liveConnections.clear();
-            m_sendPacket = {};
-        }
+        std::lock_guard lock(m_mutex);
+        if (!m_logicRunning)
+            return;
+        m_logicRunning = false;
     }
+    m_queueReady.notify_all();
+    if (m_logicThread.joinable())
+        m_logicThread.join();
+
+    std::lock_guard lock(m_mutex);
+    m_eventQueue = {};
+    m_pendingBytesByConnection.clear();
+    m_liveConnections.clear();
+    m_sendPacket = {};
+    m_disconnect = {};
+    m_gameWorld = GameWorld{};
 }
 
 void PacketHandler::LogicWorker()
 {
-    std::map<ConnectionKey, PlayerSession> sessions;
-    std::map<std::uint64_t, ConnectionKey> connectionsByPlayerId;
-    std::uint64_t nextPlayerId = 1;
 
     while (true) {
-        PacketHandlerEvent event;
+        ServerEvent event;
 
         {
             std::unique_lock lock(m_mutex);
@@ -77,90 +67,35 @@ void PacketHandler::LogicWorker()
         }
 
         try {
+            std::vector<OutboundPacket> outgoing;
             switch (event.type) {
-            case PacketHandlerEventType::Connected: {
-                PlayerSession session;
-                session.connection = event.connection;
-
-                sessions.try_emplace(event.connection, session);
+            case ServerEventType::Connected:
+                m_gameWorld.AddConnection(event.connection);
                 break;
-            }
-
-            case PacketHandlerEventType::PacketReceived: {
-                if (!sessions.contains(event.connection))
-                    break;
-
+            case ServerEventType::PacketReceived: {
                 {
                     std::lock_guard lock(m_mutex);
-                    if (!m_liveConnections.contains(event.connection)) {
+                    if (!m_liveConnections.contains(event.connection))
                         break;
-                    }
                 }
-
-                Packet response = Dispatch(event.packet, sessions.at(event.connection),
-                                           nextPlayerId, connectionsByPlayerId);
-                response.requestId = event.packet.requestId;
-                const auto bytes = response.Serialize();
-
-                m_sendPacket(event.connection, bytes.data(),
-                             static_cast<std::uint32_t>(bytes.size()));
+                outgoing = m_gameWorld.HandleRequest(event.connection, event.packet);
                 break;
             }
-
-            case PacketHandlerEventType::Disconnected: {
-                const auto sessionIt = sessions.find(event.connection);
-                if (sessionIt == sessions.end())
-                    break;
-
-                const auto playerId = sessionIt->second.playerId;
-
-                if (playerId != 0)
-                    connectionsByPlayerId.erase(playerId);
-
-                sessions.erase(sessionIt);
+            case ServerEventType::Disconnected:
+                outgoing = m_gameWorld.RemoveConnection(event.connection);
                 break;
             }
-            }
+            for (const auto& outgoingPacket : outgoing)
+                SendPacket(outgoingPacket.recipient, outgoingPacket.packet);
 
         } catch (const std::exception& error) {
             std::cerr << "[packet processing failed] " << error.what() << '\n';
+            DisconnectFailedConnection(event.connection);
         } catch (...) {
             std::cerr << "[packet processing failed] unknown error\n";
+            DisconnectFailedConnection(event.connection);
         }
     }
-}
-
-Packet PacketHandler::Echo(const Packet& requestPacket)
-{
-    Packet response;
-    response.code = MessageCode::EchoResponse;
-
-    protocol::EchoRequest request;
-    if (!request.ParseFromArray(requestPacket.payload.data(),
-                                static_cast<int>(requestPacket.payload.size()))) {
-        response.error = ErrorCode::InvalidPayload;
-        return response;
-    }
-
-    std::cout << "[Echo received] " << request.data() << '\n';
-
-    protocol::EchoResponse reply;
-    reply.set_data(request.data());
-
-    if (reply.ByteSizeLong() > PacketHeader::MaxPayloadSize) {
-        response.error = ErrorCode::InvalidPayload;
-        return response;
-    }
-
-    std::string encoded;
-    if (!reply.SerializeToString(&encoded)) {
-        response.error = ErrorCode::UnknownError;
-        return response;
-    }
-
-    response.payload.assign(encoded.begin(), encoded.end());
-    std::cout << "[Echo response] " << reply.data() << '\n';
-    return response;
 }
 
 bool PacketHandler::EnqueueConnected(ConnectionKey connection)
@@ -177,14 +112,14 @@ bool PacketHandler::EnqueueConnected(ConnectionKey connection)
 
     const auto used = m_eventQueue.size() + m_liveConnections.size();
 
-    if (used + 2 > MaxEventQueueSize) {
+    if (used + 2 > ServerLimits::MaxQueuedEvents) {
         return false;
     }
 
     m_liveConnections.insert(connection);
 
     try {
-        m_eventQueue.push({PacketHandlerEventType::Connected, connection, Packet{}});
+        m_eventQueue.push({ServerEventType::Connected, connection, Packet{}});
     } catch (...) {
         m_liveConnections.erase(connection);
         throw;
@@ -210,7 +145,7 @@ void PacketHandler::EnqueueDisconnected(ConnectionKey connection)
             return;
         }
 
-        m_eventQueue.push({PacketHandlerEventType::Disconnected, connection, Packet{}});
+        m_eventQueue.push({ServerEventType::Disconnected, connection, Packet{}});
 
         m_liveConnections.erase(connection);
     }
@@ -219,46 +154,89 @@ void PacketHandler::EnqueueDisconnected(ConnectionKey connection)
     return;
 }
 
-Packet PacketHandler::EnterSession(const Packet& requestPacket, PlayerSession& session,
-                                   std::uint64_t& nextPlayerId,
-                                   std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId)
+void PacketHandler::SendPacket(ConnectionKey connection, const Packet& packet)
 {
-    Packet response;
-    response.code = MessageCode::EnterResponse;
+    {
+        std::lock_guard lock(m_mutex);
+        if (!m_logicRunning || !m_liveConnections.contains(connection))
+            return;
+    }
+    // The transport checks generation under the connection lock.
+    // Keep each recipient independent, including callbacks which throw.
+    try {
+        const auto bytes = packet.Serialize();
+        if (!m_sendPacket(connection, bytes.data(), static_cast<std::uint32_t>(bytes.size())))
+            DisconnectFailedConnection(connection);
+    } catch (...) {
+        DisconnectFailedConnection(connection);
+    }
+}
 
-    protocol::EnterRequest request;
-    if (!request.ParseFromArray(requestPacket.payload.data(),
-                                static_cast<int>(requestPacket.payload.size()))) {
-        response.error = ErrorCode::InvalidPayload;
-        return response;
+void PacketHandler::DisconnectFailedConnection(ConnectionKey connection)
+{
+    if (m_disconnect) {
+        try {
+            m_disconnect(connection);
+        } catch (...) {
+            // Still schedule logic cleanup if a custom transport callback fails.
+        }
+    }
+    EnqueueDisconnected(connection);
+}
+
+bool PacketHandler::ReceiveBytes(ConnectionKey connection, const char* data, std::size_t size)
+{
+    if (size == 0)
+        return true;
+    if (data == nullptr || size > ProtocolLimits::MaxPacketBytes)
+        return false;
+
+    {
+        std::lock_guard lock(m_mutex);
+
+        if (!m_logicRunning || !m_liveConnections.contains(connection))
+            return false;
+
+        auto& pending = m_pendingBytesByConnection[connection];
+        pending.insert(pending.end(), data, data + size);
+
+        std::size_t consumed = 0;
+        while (pending.size() - consumed >= ProtocolLimits::HeaderSize) {
+            const auto header = PacketHeader::Read(pending.data() + consumed);
+            if (header.packetSize < ProtocolLimits::HeaderSize ||
+                header.packetSize > ProtocolLimits::MaxPacketBytes) {
+                m_pendingBytesByConnection.erase(connection);
+                return false;
+            }
+            if (pending.size() - consumed < header.packetSize)
+                break;
+
+            const char* payload = pending.data() + consumed + ProtocolLimits::HeaderSize;
+
+            Packet request;
+            request.code = header.code;
+            request.error = header.error;
+            request.requestId = header.requestId;
+            request.payload.assign(payload,
+                                   payload + (header.packetSize - ProtocolLimits::HeaderSize));
+
+            if (m_eventQueue.size() + m_liveConnections.size() >= ServerLimits::MaxQueuedEvents) {
+                m_pendingBytesByConnection.erase(connection);
+                return false;
+            }
+
+            m_eventQueue.push({ServerEventType::PacketReceived, connection, std::move(request)});
+
+            m_queueReady.notify_one();
+
+            consumed += header.packetSize;
+        }
+
+        pending.erase(pending.begin(),
+                      pending.begin() + static_cast<std::vector<char>::difference_type>(consumed));
+        if (pending.empty())
+            m_pendingBytesByConnection.erase(connection);
     }
 
-    if (session.state != PlayerState::Connected) {
-        response.error = ErrorCode::AlreadyEntered;
-        return response;
-    }
-
-    // 0은 입장 전 ID이며, 카운터가 소진돼도 재사용하지 않습니다.
-    if (nextPlayerId == 0) {
-        response.error = ErrorCode::UnknownError;
-        return response;
-    }
-
-    protocol::EnterResponse reply;
-    reply.set_player_id(nextPlayerId);
-
-    std::string encoded;
-    if (!reply.SerializeToString(&encoded)) {
-        response.error = ErrorCode::UnknownError;
-        return response;
-    }
-
-    response.payload.assign(encoded.begin(), encoded.end());
-
-    connectionsByPlayerId.emplace(nextPlayerId, session.connection);
-
-    session.playerId = nextPlayerId++;
-    session.state = PlayerState::Lobby;
-
-    return response;
+    return true;
 }

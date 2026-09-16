@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package protocol;
+
+message EnterRequest
+{
+}
+
+message EnterResponse
+{
+    uint64 player_id = 1;
+}

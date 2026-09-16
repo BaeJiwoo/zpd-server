@@ -1,4 +1,5 @@
 #include "ZPDServer.hpp"
+#include "NetworkSettings.hpp"
 
 #include <charconv>
 #include <cstdlib>
@@ -8,7 +9,7 @@
 
 int main(int argc, char* argv[])
 {
-    unsigned int port = 20000;
+    unsigned int port = NetworkSettings::DefaultPort;
     if (argc > 2) {
         std::cerr << "Usage: zpd-server [port: 1-65535]\n";
         return EXIT_FAILURE;
@@ -25,12 +26,12 @@ int main(int argc, char* argv[])
     }
 
     ZPDServer server;
-    if (!server.Start(static_cast<std::uint16_t>(port), 1000)) {
+    if (!server.Start(static_cast<std::uint16_t>(port), NetworkSettings::DefaultMaxConnections)) {
         std::cerr << "Server startup failed. Check the port and Windows socket resources.\n";
         return EXIT_FAILURE;
     }
 
-    std::cout << "TCP echo server ready. Press Enter to stop.\n";
+    std::cout << "MO room server ready. Press Enter to stop.\n";
     std::string line;
     std::getline(std::cin, line);
     server.Stop();

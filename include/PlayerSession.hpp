@@ -1,22 +1,23 @@
 #ifndef ZPD_PLAYERSESSION_HPP
 #define ZPD_PLAYERSESSION_HPP
 
-#include "Define.hpp"
+#include "ConnectionKey.hpp"
 
 #include <cstdint>
 #include <optional>
 
 enum class PlayerState
 {
-    Connected,
-    Lobby
+    AwaitingEntry,
+    Lobby,
+    InRoom
 };
 
 struct PlayerSession
 {
     std::uint64_t playerId = 0;
     ConnectionKey connection;
-    PlayerState state = PlayerState::Connected;
+    PlayerState state = PlayerState::AwaitingEntry;
     std::optional<std::uint64_t> roomId;
 };
 

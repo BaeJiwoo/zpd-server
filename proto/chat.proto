@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package protocol;
+
+// Chat text is UTF-8, 1..1024 bytes. Sender identity comes from the server session.
+message ChatRequest
+{
+    string text = 1;
+}
+message ChatResponse
+{
+}
+message ChatMessage
+{
+    uint64 room_id = 1;
+    uint64 player_id = 2;
+    string text = 3;
+}

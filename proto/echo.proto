@@ -18,12 +18,3 @@ message PingRequest
 message PingResponse
 {
 }
-
-message EnterRequest
-{
-}
-
-message EnterResponse
-{
-    uint64 player_id = 1;
-}

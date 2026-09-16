@@ -1,7 +1,7 @@
 #ifndef ZPD_IOCPSERVER_HPP
 #define ZPD_IOCPSERVER_HPP
 
-#include "ClientInfo.hpp"
+#include "ClientConnection.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -60,7 +60,7 @@ class IOCPServer
         try {
             m_clients.reserve(maxClients);
             for (std::uint32_t i = 0; i < maxClients; ++i)
-                m_clients.push_back(std::make_unique<ClientInfo>(i));
+                m_clients.push_back(std::make_unique<ClientConnection>(i));
 
             m_running.store(true);
 
@@ -115,12 +115,12 @@ class IOCPServer
   protected:
     bool Send(ConnectionKey connection, const char* data, std::uint32_t size)
     {
-        if (data == nullptr || size == 0 || size > MaxBufferSize ||
-            connection.clientId >= m_clients.size()) {
+        if (data == nullptr || size == 0 || size > NetworkSettings::ReceiveBufferBytes ||
+            connection.slotIndex >= m_clients.size()) {
             return false;
         }
 
-        ClientInfo* client = m_clients[connection.clientId].get();
+        ClientConnection* client = m_clients[connection.slotIndex].get();
         std::lock_guard lock(client->m_mutex);
 
         if (!client->IsConnected() || client->m_generation != connection.generation) {
@@ -132,11 +132,11 @@ class IOCPServer
 
     void Disconnect(ConnectionKey connection)
     {
-        if (connection.clientId >= m_clients.size()) {
+        if (connection.slotIndex >= m_clients.size()) {
             return;
         }
 
-        ClientInfo* client = m_clients[connection.clientId].get();
+        ClientConnection* client = m_clients[connection.slotIndex].get();
         std::lock_guard lock(client->m_mutex);
 
         if (!client->IsConnected() || client->m_generation != connection.generation) {
@@ -176,7 +176,7 @@ class IOCPServer
         }
     }
 
-    void DisconnectClient(ClientInfo* client)
+    void DisconnectClient(ClientConnection* client)
     {
         std::lock_guard lock(client->m_mutex);
         if (client->Disconnect()) {
@@ -195,7 +195,7 @@ class IOCPServer
                 break;
             }
 
-            ClientInfo* client = nullptr;
+            ClientConnection* client = nullptr;
             for (auto& candidate : m_clients) {
                 std::lock_guard lock(candidate->m_mutex);
                 if (!candidate->IsConnected() && candidate->m_pendingIoCount == 0) {
@@ -230,13 +230,13 @@ class IOCPServer
             if (overlapped == nullptr)
                 return;
 
-            auto* client = reinterpret_cast<ClientInfo*>(key);
-            auto* context = reinterpret_cast<IOContext*>(overlapped);
+            auto* client = reinterpret_cast<ClientConnection*>(key);
+            auto* context = reinterpret_cast<NetworkIoContext*>(overlapped);
             std::lock_guard lock(client->m_mutex);
 
             struct CompletionGuard
             {
-                ClientInfo* client;
+                ClientConnection* client;
                 ~CompletionGuard()
                 {
                     client->CompleteIo();
@@ -245,12 +245,12 @@ class IOCPServer
 
             if (!succeeded || transferred == 0 || !client->IsConnected()) {
                 DisconnectClient(client);
-                if (context->operation == IOOperation::Send)
+                if (context->operation == NetworkIoOperation::Send)
                     client->FinishSend();
                 continue;
             }
 
-            if (context->operation == IOOperation::Receive) {
+            if (context->operation == NetworkIoOperation::Receive) {
                 OnReceived(client->Key(), context->storage, transferred);
                 if (client->IsConnected() && !client->Receive()) {
                     DisconnectClient(client);
@@ -278,7 +278,7 @@ class IOCPServer
     SOCKET m_listenSocket = INVALID_SOCKET;
     HANDLE m_iocp = nullptr;
     std::atomic_bool m_running = false;
-    std::vector<std::unique_ptr<ClientInfo>> m_clients;
+    std::vector<std::unique_ptr<ClientConnection>> m_clients;
     std::thread m_acceptThread;
     std::vector<std::thread> m_workerThreads;
 };
