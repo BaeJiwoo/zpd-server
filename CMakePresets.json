@@ -1,6 +1,10 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 4, "minor": 2, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 2,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "windows-x64",
@@ -12,25 +16,41 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-windows"
       },
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "debug", "configurePreset": "windows-x64", "configuration": "Debug" },
-    { "name": "release", "configurePreset": "windows-x64", "configuration": "Release" }
+    {
+      "name": "debug",
+      "configurePreset": "windows-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "windows-x64",
+      "configuration": "Release"
+    }
   ],
   "testPresets": [
     {
       "name": "debug",
       "configurePreset": "windows-x64",
       "configuration": "Debug",
-      "output": { "verbosity": "verbose" }
+      "output": {
+        "verbosity": "verbose"
+      }
     },
     {
       "name": "release",
       "configurePreset": "windows-x64",
       "configuration": "Release",
-      "output": { "verbosity": "verbose" }
+      "output": {
+        "verbosity": "verbose"
+      }
     }
   ]
 }

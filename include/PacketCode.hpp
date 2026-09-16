@@ -3,12 +3,31 @@
 
 #include <cstdint>
 
-enum class RequestCode : std::uint8_t
+enum class MessageCode : std::uint8_t
 {
-    Echo = 0x01,
-    Ping = 0x02,
-    Enter = 0x03,
+    EchoRequest = 0x01,
+    PingRequest = 0x02,
+    EnterRequest = 0x03,
+
+    EchoResponse = 0x81,
+    PingResponse = 0x82,
+    EnterResponse = 0x83,
+    ErrorResponse = 0xff,
 };
+
+constexpr MessageCode ResponseCodeFor(MessageCode request) noexcept
+{
+    switch (request) {
+    case MessageCode::EchoRequest:
+        return MessageCode::EchoResponse;
+    case MessageCode::PingRequest:
+        return MessageCode::PingResponse;
+    case MessageCode::EnterRequest:
+        return MessageCode::EnterResponse;
+    default:
+        return MessageCode::ErrorResponse;
+    }
+}
 
 enum class ErrorCode : std::uint8_t
 {

@@ -80,18 +80,18 @@ Packet ReceivePacket(SOCKET peer)
     Check(header.size >= PacketHeader::Size && header.size <= PacketHeader::MaxPacketSize,
           "invalid response size");
     Packet packet;
-    packet.request = header.request;
+    packet.code = header.code;
     packet.error = header.error;
     packet.payload.resize(header.size - PacketHeader::Size);
     ReceiveExact(peer, packet.payload.data(), packet.payload.size());
     return packet;
 }
 
-void CheckResponse(SOCKET peer, RequestCode request, ErrorCode error,
+void CheckResponse(SOCKET peer, MessageCode code, ErrorCode error,
                    const std::vector<char>& payload = {})
 {
     const auto response = ReceivePacket(peer);
-    Check(response.request == request, "response request code changed");
+    Check(response.code == code, "unexpected response message code");
     Check(response.error == error, "unexpected response error code");
     Check(response.payload == payload, "response payload changed");
 }
@@ -112,7 +112,7 @@ Packet BuildEchoRequest(const char* data, std::size_t available, std::size_t& da
     Check(message.SerializeToString(&encoded), "EchoRequest serialization failed");
 
     Packet packet;
-    packet.request = RequestCode::Echo;
+    packet.code = MessageCode::EchoRequest;
     packet.payload.assign(encoded.begin(), encoded.end());
     return packet;
 }
@@ -120,7 +120,7 @@ Packet BuildEchoRequest(const char* data, std::size_t available, std::size_t& da
 std::string ReceiveEchoResponse(SOCKET peer)
 {
     const auto packet = ReceivePacket(peer);
-    Check(packet.request == RequestCode::Echo, "expected Echo response");
+    Check(packet.code == MessageCode::EchoResponse, "expected Echo response");
     Check(packet.error == ErrorCode::None, "Echo returned an error");
 
     protocol::EchoResponse response;
@@ -163,7 +163,8 @@ void PacketProtocol(std::uint16_t port)
     SendAll(peer.value, ping, sizeof(ping), 1);
     char pong[sizeof(ping)];
     ReceiveExact(peer.value, pong, sizeof(pong));
-    Check(std::equal(std::begin(ping), std::end(ping), std::begin(pong)),
+    const char expectedPong[] = {0x00, 0x04, static_cast<char>(0x82), 0x00};
+    Check(std::equal(std::begin(expectedPong), std::end(expectedPong), std::begin(pong)),
           "Ping wire response changed");
 
     const std::string rawEcho{'a', '\0', static_cast<char>(0xff), 'z'};
@@ -180,26 +181,46 @@ void PacketProtocol(std::uint16_t port)
     combined.insert(combined.end(), echoBytes.begin(), echoBytes.end());
     SendAll(peer.value, combined.data(), combined.size());
     Check(ReceiveEchoResponse(peer.value) == rawEcho, "combined Echo response changed");
-    CheckResponse(peer.value, RequestCode::Ping, ErrorCode::None);
+    CheckResponse(peer.value, MessageCode::PingResponse, ErrorCode::None);
     Check(ReceiveEchoResponse(peer.value) == rawEcho, "combined Echo response changed");
 
-    const auto expectError = [&](const Packet& request, ErrorCode expected) {
+    const auto expectError = [&](const Packet& request, MessageCode responseCode,
+                                 ErrorCode expected) {
         const auto bytes = request.Serialize();
         SendAll(peer.value, bytes.data(), bytes.size());
-        CheckResponse(peer.value, request.request, expected);
+        CheckResponse(peer.value, responseCode, expected);
     };
     Packet unknown;
-    unknown.request = static_cast<RequestCode>(0xff);
-    expectError(unknown, ErrorCode::UnknownRequest);
+    unknown.code = static_cast<MessageCode>(0x7f);
+    expectError(unknown, MessageCode::ErrorResponse, ErrorCode::UnknownRequest);
+    for (const auto code : {MessageCode::EchoResponse, MessageCode::PingResponse,
+                            MessageCode::EnterResponse, MessageCode::ErrorResponse}) {
+        Packet responseAsRequest;
+        responseAsRequest.code = code;
+        expectError(responseAsRequest, MessageCode::ErrorResponse, ErrorCode::UnknownRequest);
+    }
     Packet invalidPing;
-    invalidPing.request = RequestCode::Ping;
+    invalidPing.code = MessageCode::PingRequest;
     invalidPing.payload = {'x'};
-    expectError(invalidPing, ErrorCode::InvalidPayload);
+    expectError(invalidPing, MessageCode::PingResponse, ErrorCode::InvalidPayload);
     Packet invalidStatus;
     invalidStatus.error = ErrorCode::InvalidPayload;
-    expectError(invalidStatus, ErrorCode::InvalidRequestStatus);
+    expectError(invalidStatus, MessageCode::EchoResponse, ErrorCode::InvalidRequestStatus);
     SendAll(peer.value, ping, sizeof(ping));
-    CheckResponse(peer.value, RequestCode::Ping, ErrorCode::None);
+    CheckResponse(peer.value, MessageCode::PingResponse, ErrorCode::None);
+
+    // Empty EnterRequest, followed by a repeated entry on the same connection.
+    const char enter[] = {0x00, 0x04, 0x03, 0x00};
+    SendAll(peer.value, enter, sizeof(enter));
+    const auto entered = ReceivePacket(peer.value);
+    Check(entered.code == MessageCode::EnterResponse, "expected Enter response");
+    Check(entered.error == ErrorCode::None, "Enter returned an error");
+    protocol::EnterResponse entry;
+    Check(entry.ParseFromArray(entered.payload.data(), static_cast<int>(entered.payload.size())),
+          "EnterResponse parsing failed");
+    Check(entry.player_id() != 0, "Enter returned an invalid player ID");
+    SendAll(peer.value, enter, sizeof(enter));
+    CheckResponse(peer.value, MessageCode::EnterResponse, ErrorCode::AlreadyEntered);
 }
 
 void InvalidPacketSize(std::uint16_t port, std::uint16_t size)
@@ -207,7 +228,7 @@ void InvalidPacketSize(std::uint16_t port, std::uint16_t size)
     Socket peer;
     peer.Connect(port);
     const char bytes[] = {static_cast<char>(size >> 8), static_cast<char>(size & 0xff),
-                          static_cast<char>(RequestCode::Echo), 0};
+                          static_cast<char>(MessageCode::EchoRequest), 0};
     SendAll(peer.value, bytes, sizeof(bytes));
     char response;
     const int count = recv(peer.value, &response, 1, 0);

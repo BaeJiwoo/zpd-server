@@ -60,8 +60,9 @@ class PacketHandler
                 const char* payload = pending.data() + consumed + PacketHeader::Size;
 
                 Packet request;
-                request.request = header.request;
+                request.code = header.code;
                 request.error = header.error;
+                request.requestId = header.requestId;
                 request.payload.assign(payload, payload + (header.size - PacketHeader::Size));
 
                 if (m_eventQueue.size() + m_liveConnections.size() >= MaxEventQueueSize) {
@@ -95,27 +96,33 @@ class PacketHandler
     static constexpr std::size_t MaxEventQueueSize = 1024;
 
     static Packet Dispatch(const Packet& requestPacket, PlayerSession& session,
-                           std::uint64_t& nextPlayerId, std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId)
+                           std::uint64_t& nextPlayerId,
+                           std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId)
     {
         Packet response;
-        response.request = requestPacket.request;
+        response.code = ResponseCodeFor(requestPacket.code);
 
-        if (requestPacket.error != ErrorCode::None) {
+        if (response.code == MessageCode::ErrorResponse) {
+            response.error = ErrorCode::UnknownRequest;
+            return response;
+        }
+
+        if (requestPacket.error != ErrorCode::None || requestPacket.requestId == 0) {
             response.error = ErrorCode::InvalidRequestStatus;
             return response;
         }
 
         const auto& payload = requestPacket.payload;
-        switch (requestPacket.request) {
-        case RequestCode::Echo: {
+        switch (requestPacket.code) {
+        case MessageCode::EchoRequest: {
             return Echo(requestPacket);
         }
-        case RequestCode::Ping: {
+        case MessageCode::PingRequest: {
             if (!payload.empty())
                 response.error = ErrorCode::InvalidPayload;
             break;
         }
-        case RequestCode::Enter: {
+        case MessageCode::EnterRequest: {
             return EnterSession(requestPacket, session, nextPlayerId, connectionsByPlayerId);
         }
         default: {
@@ -131,7 +138,8 @@ class PacketHandler
     static Packet Echo(const Packet& requestPacket);
 
     static Packet EnterSession(const Packet& requestPacket, PlayerSession& session,
-                               std::uint64_t& nextPlayerId, std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId);
+                               std::uint64_t& nextPlayerId,
+                               std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId);
 
     std::mutex m_mutex;
     std::map<ConnectionKey, std::vector<char>> m_pendingBytesByConnection;

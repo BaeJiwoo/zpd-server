@@ -97,8 +97,9 @@ void PacketHandler::LogicWorker()
                     }
                 }
 
-                const Packet response = Dispatch(event.packet, sessions.at(event.connection),
-                                                 nextPlayerId, connectionsByPlayerId);
+                Packet response = Dispatch(event.packet, sessions.at(event.connection),
+                                           nextPlayerId, connectionsByPlayerId);
+                response.requestId = event.packet.requestId;
                 const auto bytes = response.Serialize();
 
                 m_sendPacket(event.connection, bytes.data(),
@@ -132,7 +133,7 @@ void PacketHandler::LogicWorker()
 Packet PacketHandler::Echo(const Packet& requestPacket)
 {
     Packet response;
-    response.request = RequestCode::Echo;
+    response.code = MessageCode::EchoResponse;
 
     protocol::EchoRequest request;
     if (!request.ParseFromArray(requestPacket.payload.data(),
@@ -223,7 +224,7 @@ Packet PacketHandler::EnterSession(const Packet& requestPacket, PlayerSession& s
                                    std::map<std::uint64_t, ConnectionKey>& connectionsByPlayerId)
 {
     Packet response;
-    response.request = RequestCode::Enter;
+    response.code = MessageCode::EnterResponse;
 
     protocol::EnterRequest request;
     if (!request.ParseFromArray(requestPacket.payload.data(),

@@ -25,14 +25,14 @@ bool BuildEchoRequest(std::string_view source, std::size_t offset, Packet& packe
     if (!message.SerializeToString(&encoded))
         return false;
 
-    packet.request = RequestCode::Echo;
+    packet.code = MessageCode::EchoRequest;
     packet.payload.assign(encoded.begin(), encoded.end());
     return true;
 }
 
 int RunEchoClient(int argc, char* argv[])
 {
-    unsigned int port = 9100;
+    unsigned int port = 20000;
     if (argc > 2) {
         std::cerr << "Usage: zpd-server-tests [port: 1-65535]\n";
         return 1;
@@ -91,6 +91,7 @@ int RunEchoClient(int argc, char* argv[])
               << "Type a message to send Echo. /enter joins the lobby with a temporary player ID; "
                  "/ping sends Ping; /quit exits."
               << std::endl;
+    std::uint32_t nextRequestId = 1;
     std::string line;
     while (std::cout << "> " << std::flush, std::getline(std::cin, line)) {
         if (line == "/quit")
@@ -101,7 +102,7 @@ int RunEchoClient(int argc, char* argv[])
         std::size_t offset = 0;
         do {
             Packet request;
-            request.request = ping ? RequestCode::Ping : RequestCode::Echo;
+            request.code = ping ? MessageCode::PingRequest : MessageCode::EchoRequest;
             std::size_t length = 0;
             if (enter) {
                 protocol::EnterRequest enterRequest;
@@ -111,12 +112,16 @@ int RunEchoClient(int argc, char* argv[])
                     return 1;
                 }
 
-                request.request = RequestCode::Enter;
+                request.code = MessageCode::EnterRequest;
                 request.payload.assign(encoded.begin(), encoded.end());
             } else if (!ping && !BuildEchoRequest(line, offset, request, length)) {
                 std::cerr << "Echo request serialization failed.\n";
                 return 1;
             }
+            // 一度に待つ応答は一つなので、周回時にも未完了の ID と重複しません。
+            request.requestId = nextRequestId++;
+            if (nextRequestId == 0)
+                nextRequestId = 1;
             const auto bytes = request.Serialize();
             std::size_t sent = 0;
             while (sent < bytes.size()) {
@@ -146,8 +151,9 @@ int RunEchoClient(int argc, char* argv[])
             }
             const auto header = PacketHeader::Read(headerBytes);
             if (header.size < PacketHeader::Size || header.size > PacketHeader::MaxPacketSize ||
-                header.request != request.request) {
-                std::cerr << "Invalid response header.\n";
+                header.code != ResponseCodeFor(request.code) ||
+                header.requestId != request.requestId) {
+                std::cerr << "Invalid response header or request ID.\n";
                 return 1;
             }
             std::string payload(header.size - PacketHeader::Size, '\0');
