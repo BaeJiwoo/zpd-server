@@ -6,6 +6,9 @@
 #include "proto/chat.pb.h"
 #include <iostream>
 #include <stdexcept>
+#include <cmath>
+#include "proto/position.pb.h"
+#include "proto/game.pb.h"
 
 template <typename Message> Message RoomChatClient::ParseMessage(const std::vector<char>& payload)
 {
@@ -28,6 +31,8 @@ template <typename Message> void RoomChatClient::ApplyRoomSnapshot(const std::ve
     m_roomId = message.room_id();
     m_capacity = message.capacity();
     m_members = std::move(members);
+    m_positions.clear();
+    m_positionTick = 0;
     ShowMembers();
 }
 
@@ -35,6 +40,41 @@ void RoomChatClient::HandleServerPacket(const PacketHeader& header,
                                         const std::vector<char>& payload)
 {
     std::lock_guard lock(m_mutex);
+    if (header.code == MessageCode::GameEvent) {
+        const auto message = ParseMessage<protocol::GameEvent>(payload);
+        if (header.requestId != 0 || header.error != ErrorCode::None || message.event() == 0 ||
+            message.room_id() != m_roomId || message.payload().size() > ProtocolLimits::MaxGamePayloadBytes)
+            throw std::runtime_error("Invalid game event.");
+        std::cout << "Game event " << message.event() << ": " << message.payload() << std::endl;
+        return;
+    }
+    if (header.code == MessageCode::RoomPositions) {
+        const auto message = ParseMessage<protocol::RoomPositions>(payload);
+        if (header.requestId != 0 || header.error != ErrorCode::None || !m_roomId ||
+            message.room_id() != m_roomId || message.tick() <= m_positionTick ||
+            message.players_size() != static_cast<int>(m_members.size()))
+            throw std::runtime_error("Invalid position snapshot.");
+        std::map<std::uint64_t, std::array<float, 3>> positions;
+        for (const auto& player : message.players()) {
+            const std::array<float, 3> position{
+                player.position().x(), player.position().y(), player.position().z()};
+            if (!player.has_position() || !m_members.contains(player.player_id()) ||
+                !positions.emplace(player.player_id(), position).second)
+                throw std::runtime_error("Invalid position membership.");
+            for (auto value : position)
+                if (!std::isfinite(value) || std::abs(value) > ProtocolLimits::MaxPositionCoordinate)
+                    throw std::runtime_error("Invalid position coordinate.");
+        }
+        for (const auto& [id, position] : positions) {
+            const auto previous = m_positions.find(id);
+            if (previous == m_positions.end() || previous->second != position)
+                std::cout << "Player " << id << " position: " << position[0] << ' '
+                          << position[1] << ' ' << position[2] << std::endl;
+        }
+        m_positions = std::move(positions);
+        m_positionTick = message.tick();
+        return;
+    }
     if (header.code == MessageCode::ChatMessage) {
         const auto message = ParseMessage<protocol::ChatMessage>(payload);
         if (header.requestId != 0 || header.error != ErrorCode::None || !m_roomId ||
@@ -66,6 +106,8 @@ void RoomChatClient::HandleServerPacket(const PacketHeader& header,
                 throw std::runtime_error("Invalid join notification.");
         } else if (m_members.erase(playerId) != 1)
             throw std::runtime_error("Invalid leave notification.");
+        if (!joined)
+            m_positions.erase(playerId);
         std::cout << (joined ? "PlayerJoined: " : "PlayerLeft: ") << playerId << '\n';
         ShowMembers();
         return;
@@ -104,6 +146,18 @@ void RoomChatClient::HandleServerPacket(const PacketHeader& header,
         if (!payload.empty())
             throw std::runtime_error("Unexpected Chat response body.");
         break;
+    case MessageCode::PositionUpdateResponse:
+        if (!payload.empty())
+            throw std::runtime_error("Unexpected position response body.");
+        std::cout << "Position accepted for next tick." << std::endl;
+        break;
+    case MessageCode::GameCommandResponse: {
+        const auto message = ParseMessage<protocol::GameCommandResponse>(payload);
+        if (message.payload().size() > ProtocolLimits::MaxGamePayloadBytes)
+            throw std::runtime_error("Invalid game response.");
+        std::cout << "Game response: " << message.payload() << std::endl;
+        break;
+    }
     case MessageCode::PingResponse:
         if (!payload.empty())
             throw std::runtime_error("Unexpected Ping body.");
@@ -127,6 +181,8 @@ void RoomChatClient::HandleServerPacket(const PacketHeader& header,
         m_roomId = 0;
         m_capacity = 0;
         m_members.clear();
+        m_positions.clear();
+        m_positionTick = 0;
         std::cout << "Left room. Back in lobby." << std::endl;
         break;
     default:
@@ -163,5 +219,7 @@ void RoomChatClient::ReceivePackets()
         std::cout << "Request " << id << " failed: connection closed." << '\n';
     m_pending.clear();
     m_members.clear();
+    m_positions.clear();
+    m_positionTick = 0;
     m_roomId = 0;
 }

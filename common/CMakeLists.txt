@@ -3,6 +3,8 @@ add_library(protocol STATIC
     proto/session.proto
     proto/room.proto
     proto/chat.proto
+    proto/position.proto
+    proto/game.proto
 )
 target_compile_features(protocol PUBLIC cxx_std_20)
 target_link_libraries(protocol PUBLIC protobuf::libprotobuf)

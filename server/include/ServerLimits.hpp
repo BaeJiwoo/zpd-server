@@ -2,6 +2,7 @@
 #define ZPD_SERVERLIMITS_HPP
 
 #include <cstddef>
+
 namespace ServerLimits {
 inline constexpr std::size_t MaxQueuedEvents = 1024;
 }

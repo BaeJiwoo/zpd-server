@@ -10,8 +10,8 @@ class ZPDServer final : public IOCPServer
     bool Start(std::uint16_t port, std::uint32_t maxClients, std::uint16_t workerCount = 0)
     {
         if (!m_packetHandler.Start(
-                [this](ConnectionKey connection, const char* bytes, std::uint32_t length) {
-                    return Send(connection, bytes, length);
+                [this](ConnectionKey connection, const char* data, std::uint32_t size) {
+                    return Send(connection, data, size);
                 },
                 [this](ConnectionKey connection) { Disconnect(connection); }))
             return false;
@@ -51,7 +51,7 @@ class ZPDServer final : public IOCPServer
             if (m_packetHandler.ReceiveBytes(connection, data, size)) {
                 return;
             }
-            std::cerr << "[packet or send failed] client=" << slotIndex << std::endl;
+            std::cerr << "[packet receive failed] client=" << slotIndex << std::endl;
         } catch (...) {
             std::cerr << "[packet handling failed] client=" << slotIndex << std::endl;
         }

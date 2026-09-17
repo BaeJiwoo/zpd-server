@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package protocol;
+
+message GameCommandRequest
+{
+    uint64 room_id = 1;
+    uint32 command = 2;
+    bytes payload = 3;
+}
+
+message GameCommandResponse
+{
+    bytes payload = 1;
+}
+
+message GameEvent
+{
+    uint64 room_id = 1;
+    uint32 event = 2;
+    bytes payload = 3;
+}

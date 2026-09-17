@@ -12,6 +12,8 @@ enum class MessageCode : std::uint8_t
     JoinRoomRequest = 5,
     LeaveRoomRequest = 6,
     ChatRequest = 7,
+    PositionUpdateRequest = 8,
+    GameCommandRequest = 9,
 
     EchoResponse = 129,
     PingResponse = 130,
@@ -20,9 +22,13 @@ enum class MessageCode : std::uint8_t
     JoinRoomResponse = 133,
     LeaveRoomResponse = 134,
     ChatResponse = 135,
+    PositionUpdateResponse = 136,
+    GameCommandResponse = 137,
     PlayerJoined = 193,
     PlayerLeft = 194,
     ChatMessage = 195,
+    RoomPositions = 196,
+    GameEvent = 197,
     ErrorResponse = 255,
 };
 
@@ -43,6 +49,10 @@ constexpr MessageCode ResponseCodeFor(MessageCode request) noexcept
         return MessageCode::LeaveRoomResponse;
     case MessageCode::ChatRequest:
         return MessageCode::ChatResponse;
+    case MessageCode::PositionUpdateRequest:
+        return MessageCode::PositionUpdateResponse;
+    case MessageCode::GameCommandRequest:
+        return MessageCode::GameCommandResponse;
     default:
         return MessageCode::ErrorResponse;
     }

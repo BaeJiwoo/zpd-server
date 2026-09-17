@@ -1,6 +1,7 @@
 #include "ZPDServer.hpp"
 #include "NetworkSettings.hpp"
 
+
 #include <charconv>
 #include <cstdlib>
 #include <iostream>
@@ -31,7 +32,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    std::cout << "MO room server ready. Press Enter to stop.\n";
+    std::cout << "Packet server ready. Press Enter to stop.\n";
     std::string line;
     std::getline(std::cin, line);
     server.Stop();

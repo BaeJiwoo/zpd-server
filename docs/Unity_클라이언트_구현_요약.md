@@ -179,3 +179,7 @@ Disconnected → AwaitingEntry → Lobby → InRoom
 ```
 
 참조 클라이언트: `mockclient/src/RoomChatCommands.cpp`, `mockclient/src/RoomChatReceiver.cpp`. 정확한 스키마·상수의 기준은 `common/proto/*.proto`, `common/include/ProtocolLimits.hpp`, `common/include/MessageCode.hpp`, `common/include/ErrorCode.hpp`입니다. 상세 서버 규격은 [MO 통신 규격](MO_통신_규격.md)을 참고하세요.
+
+## 게임 확장 메시지
+
+위치·사용자 정의 게임 명령을 사용하려면 `common/proto/position.proto`, `common/proto/game.proto`도 C#으로 생성합니다. GameEvent(197)는 command별 응답과 별개로 처리합니다. 서버 C++의 User.userId는 기존 wire player_id와 동일합니다. [게임 개발 가이드](게임_로직_개발_가이드.md)를 참고하세요.

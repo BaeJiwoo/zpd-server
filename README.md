@@ -1,6 +1,6 @@
 # zpd-server
 
-A Windows C++20 MO room server using WinSock2, IOCP, Protobuf, CMake and vcpkg.
+A Windows C++20 packet server skeleton using WinSock2, IOCP, Protobuf, CMake and vcpkg.
 
 See [the MO requirements](docs/MO_서버_단계별_개발_요구사항.md) and [wire protocol](docs/MO_통신_규격.md).
 
@@ -33,38 +33,17 @@ The server listens on all IPv4 interfaces at TCP port 20000 and accepts up to 10
 
 ## Tests
 
-Start the server first in one terminal:
-
-```powershell
-.\out\build\windows-x64\Debug\zpd-server.exe
-```
-
-Open a second terminal and run the interactive client:
-
-```powershell
-.\out\build\windows-x64\Debug\zpd-client.exe
-```
-
-Open two clients. Run `/enter` in both (development-only temporary identity, no authentication), then `/create 2` in the first. Run `/join <returned room ID>` in the second. Both show the room members; join/leave notifications arrive even while input is idle. Use `/leave`, `/members`, `/ping`, or `/quit`. Other text (or `/say <text>`) sends UTF-8 chat to everyone in the same room, including the sender. Chat is limited to 1024 UTF-8 bytes. `/echo <text>` retains the binary-preserving Echo check. Press Enter in the server terminal to stop it; idle clients also exit on disconnection.
-
-Both programs default to port 20000. To use another port, pass the same port to both executables, such as `zpd-server.exe 9100` and `zpd-client.exe 9100`. The client connects to 127.0.0.1 and does not start an embedded server.
-
-In VS Code, run Tasks: Run Task > Server: Run, then Tasks: Run Task > Client: Run Room Chat. The server task builds both programs. Each program uses its own terminal. The client task uses the existing build so the running server executable does not need to be rebuilt. For debugging, select Debug Room Chat Client after starting the server.
-
-Automated integration checks remain available separately through CTest. They use `--no-pause`, start embedded servers on temporary ports, and display all logs:
-
 ```powershell
 ctest --preset debug
 ctest --preset release
 ```
 
-Actual interactive-client regression checks (Python 3 standard library only) also exercise notifications while input is idle, shutdown, malformed responses and outstanding request cleanup:
+The server tests cover packet framing, fragmented and coalesced input, connection reuse,
+handler restart, valid packets without responses, and disconnection on malformed frames.
 
-```powershell
-python mockclient/tests/chat_client_tests.py out/build/windows-x64/Debug
-```
-
-The dedicated interactive executable is `zpd-client.exe`. The existing `zpd-server-tests.exe <port>` entry point is retained for compatibility. See [code organization](docs/코드_구조.md) for module responsibilities and naming changes.
+The mock room client and shared protocol schemas are retained as references. The server
+currently has no Echo, Ping, entry, room, chat, position, or game-command handlers, so the
+interactive service commands and old client/server regression scenarios cannot succeed.
 
 ## Project structure
 
@@ -93,7 +72,7 @@ root/
 
 - `mockclient`: the console room chat client and its process regression tests.
 - `common`: Protobuf schemas, message/error codes, packet framing, protocol limits, shared C++ network defaults and serialization helpers. See [Unity sharing](common/README.md).
-- `server`: IOCP transport, connection management, game/room/chat logic and server integration tests.
+- `server`: IOCP transport, connection management, packet framing, a basic event worker and server tests.
 - `docs`: requirements, protocol specification and design notes.
 
 Each module owns its CMake targets. The root configures shared build options and includes the modules. Headers are exposed through target dependencies; the mock client does not include server headers. Add implementation files to the owning module's `CMakeLists.txt`.
@@ -102,7 +81,7 @@ Executables remain under `out/build/windows-x64/Debug` or `Release`, so existing
 
 ## Server behavior
 
-The 8-byte big-endian packet header carries length, message code, error and request ID. Protobuf bodies are limited to 4088 bytes. One logic worker owns player sessions and rooms; disconnected players leave their room, and empty rooms are deleted. See the protocol document for message codes and errors.
+The 8-byte big-endian packet header carries length, message code, error and request ID. Protobuf bodies are limited to 4088 bytes. One logic worker waits for connected, packet-received and disconnected events and removes them from the queue. Its event handling branches are intentionally empty. No service state, periodic ticks, responses or broadcasts are generated. Protocol and service design documents describe reference behavior, not currently implemented services.
 
 Sends are serialized per connection. Each connection allows up to 256 queued sends of at most 4096 bytes each. A full queue or send failure disconnects that client. Pending I/O completions are drained before connection slots are reused or released. Peer FIN and server shutdown close the connection without guaranteeing delivery of queued responses.
 
@@ -113,4 +92,3 @@ WinSock2 is provided by the Windows SDK. Protobuf is installed through the vcpkg
 For Visual Studio 2022, change the preset generator to `Visual Studio 17 2022`, set the preset minimum CMake version to 3.25 or later, and use a separate build directory.
 
 References: [vcpkg CMake integration](https://learn.microsoft.com/en-us/vcpkg/users/buildsystems/cmake-integration), [VS Code CMake presets](https://github.com/microsoft/vscode-cmake-tools/blob/main/docs/cmake-presets.md), [asynchronous socket closure](https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-closesocket).
-

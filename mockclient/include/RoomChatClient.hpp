@@ -9,6 +9,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <array>
 
 class RoomChatClient
 {
@@ -44,5 +45,7 @@ class RoomChatClient
     std::uint64_t m_roomId = 0;
     std::uint32_t m_capacity = 0;
     std::set<std::uint64_t> m_members;
+    std::map<std::uint64_t, std::array<float, 3>> m_positions;
+    std::uint64_t m_positionTick = 0;
 };
 #endif // ZPD_ROOMCHATCLIENT_HPP

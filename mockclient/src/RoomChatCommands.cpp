@@ -8,18 +8,83 @@
 #include <stdexcept>
 #include "EchoRequestBuilder.hpp"
 #include <charconv>
+#include <sstream>
+#include <cmath>
+#include "proto/position.pb.h"
+#include "proto/game.pb.h"
+#include "ProtobufCodec.hpp"
 
 bool RoomChatClient::HandleInputLine(const std::string& line)
 {
     if (line == "/quit")
         return false;
+    if (line == "/positions") {
+        std::lock_guard lock(m_mutex);
+        std::cout << "Position tick: " << m_positionTick << '\n';
+        for (const auto& [id, position] : m_positions)
+            std::cout << "Player " << id << " position: " << position[0] << ' '
+                      << position[1] << ' ' << position[2] << '\n';
+        std::cout << std::flush;
+        return true;
+    }
     if (line == "/members") {
         std::lock_guard lock(m_mutex);
         ShowMembers();
         return true;
     }
     Packet packet;
-    if (line == "/enter")
+    if (line.starts_with("/game ")) {
+        const auto input = std::string_view(line).substr(6);
+        const auto split = input.find(' ');
+        const auto number = input.substr(0, split);
+        std::uint32_t command = 0;
+        const auto [end, error] = std::from_chars(number.data(), number.data() + number.size(), command);
+        const auto payload = split == std::string_view::npos ? std::string_view{} : input.substr(split + 1);
+        if (error != std::errc{} || end != number.data() + number.size() || !command ||
+            payload.size() > ProtocolLimits::MaxGamePayloadBytes) {
+            PrintStatus("Invalid game command. Use /game <command> [payload].");
+            return true;
+        }
+        protocol::GameCommandRequest message;
+        {
+            std::lock_guard lock(m_mutex);
+            if (!m_roomId) {
+                std::cout << "Join a room before game commands." << std::endl;
+                return true;
+            }
+            message.set_room_id(m_roomId);
+        }
+        message.set_command(command);
+        message.set_payload(std::string(payload));
+        packet.code = MessageCode::GameCommandRequest;
+        ProtobufCodec::SerializePayload(packet, message);
+    } else if (line.starts_with("/move ")) {
+        std::istringstream input(line.substr(6));
+        float x, y, z;
+        std::string extra;
+        if (!(input >> x >> y >> z) || (input >> extra) || !std::isfinite(x) ||
+            !std::isfinite(y) || !std::isfinite(z) ||
+            std::abs(x) > ProtocolLimits::MaxPositionCoordinate ||
+            std::abs(y) > ProtocolLimits::MaxPositionCoordinate ||
+            std::abs(z) > ProtocolLimits::MaxPositionCoordinate) {
+            PrintStatus("Invalid position. Use /move <x> <y> <z> within +/-1000000.");
+            return true;
+        }
+        protocol::PositionUpdateRequest message;
+        {
+            std::lock_guard lock(m_mutex);
+            if (!m_roomId) {
+                std::cout << "Join a room before moving." << std::endl;
+                return true;
+            }
+            message.set_room_id(m_roomId);
+        }
+        message.mutable_position()->set_x(x);
+        message.mutable_position()->set_y(y);
+        message.mutable_position()->set_z(z);
+        packet.code = MessageCode::PositionUpdateRequest;
+        ProtobufCodec::SerializePayload(packet, message);
+    } else if (line == "/enter")
         packet.code = MessageCode::EnterRequest;
     else if (line == "/ping")
         packet.code = MessageCode::PingRequest;
